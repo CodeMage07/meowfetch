@@ -16,10 +16,16 @@ _SYS = platform.system()  # 'Linux', 'Darwin', 'Windows'
 if _SYS == 'Windows':
     os.system('')
 
-# ANSI colours
-RST  = '\033[0m';  BOLD = '\033[1m'
-CYN  = '\033[96m'; YLW  = '\033[93m'; WHT = '\033[97m'
-MGT  = '\033[95m'; GRN  = '\033[92m'; RED = '\033[91m'
+# ANSI — monochrome only
+RST  = '\033[0m'
+BOLD = '\033[1m'
+DIM  = '\033[2m'
+CYN  = BOLD        # cat
+YLW  = BOLD        # labels
+WHT  = RST         # values
+MGT  = BOLD        # user@host
+GRN  = ''          # bar (no colour)
+RED  = ''          # bar (no colour)
 
 # ASCII cats 
 CATS = [
@@ -51,14 +57,14 @@ def run(*cmd):
 
 def bar(pct, width=10):
     filled = round(width * pct / 100)
-    color  = GRN if pct < 60 else (YLW if pct < 85 else RED)
-    return f'{color}[{"█" * filled}{"░" * (width - filled)}]{RST}'
+    return f'[{"█" * filled}{"░" * (width - filled)}]'
 
 def color_palette():
     block = '   '
-    row1 = ''.join(f'\033[4{i}m{block}' for i in range(8)) + RST
-    row2 = ''.join(f'\033[10{i}m{block}' for i in range(8)) + RST
-    return [row1, row2]
+    # greyscale ramp from dark to light using 256-colour codes 232–255
+    steps = [232, 238, 244, 247, 250, 253, 255]
+    row = ''.join(f'\033[48;5;{n}m{block}' for n in steps) + RST
+    return [row]
 
 # info collectors
 def get_user():
