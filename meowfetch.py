@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""catfetch — neofetch-style system info with randomised cat ASCII art"""
+"""Meowfetch, a fetch script with a pawesome twist!"""
 
 import os, platform, random, re, socket, subprocess
 from datetime import timedelta
@@ -154,21 +154,51 @@ def get_packages():
                     if l.strip() and 'packages installed' not in l]
             return f'{len(pkgs)} (choco)'
         return 'Unknown'
-    # Linux
-    out = run('pacman', '-Qq')
-    if out:
-        return f'{len(out.splitlines())} (pacman)'
-    out = run('dpkg-query', '-f', '${Package}\n', '-W')
-    if out:
-        count = [f'{len(out.splitlines())} (dpkg)']
-        flat  = run('flatpak', 'list', '--app', '--columns=name')
-        if flat:
-            count.append(f'{len(flat.splitlines())} (flatpak)')
-        return ', '.join(count)
-    out = run('rpm', '-qa', '--queryformat', '%{NAME}\n')
-    if out:
-        return f'{len(out.splitlines())} (rpm)'
-    return 'Unknown'
+    # Linux — try each package manager, append flatpak if present
+    counts = []
+
+    # Portage (Gentoo) — read directly from the package db, no tool needed
+    import glob as _glob
+    portage_pkgs = _glob.glob('/var/db/pkg/*/*')
+    if portage_pkgs:
+        counts.append(f'{len(portage_pkgs)} (portage)')
+
+    if not counts:
+        out = run('pacman', '-Qq')
+        if out:
+            counts.append(f'{len(out.splitlines())} (pacman)')
+
+    if not counts:
+        out = run('dpkg-query', '-f', '${Package}\n', '-W')
+        if out:
+            counts.append(f'{len(out.splitlines())} (dpkg)')
+
+    if not counts:
+        out = run('rpm', '-qa', '--queryformat', '%{NAME}\n')
+        if out:
+            counts.append(f'{len(out.splitlines())} (rpm)')
+
+    if not counts:
+        out = run('xbps-query', '-l')
+        if out:
+            counts.append(f'{len(out.splitlines())} (xbps)')
+
+    if not counts:
+        out = run('apk', 'list', '--installed')
+        if out:
+            counts.append(f'{len(out.splitlines())} (apk)')
+
+    if not counts:
+        out = run('eopkg', 'list-installed', '-q')
+        if out:
+            counts.append(f'{len(out.splitlines())} (eopkg)')
+
+    # Flatpak is additive — append if present alongside anything
+    flat = run('flatpak', 'list', '--app', '--columns=name')
+    if flat:
+        counts.append(f'{len(flat.splitlines())} (flatpak)')
+
+    return ', '.join(counts) if counts else 'Unknown'
 
 def get_shell():
     if _SYS == 'Windows':
