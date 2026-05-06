@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Meowfetch, a fetch script with a pawesome twist!"""
+"""Meowfetch — a fetch script with a pawesome twist"""
 
-import glob, os, platform, random, re, shutil, socket, subprocess
+import glob, os, platform, random, re, shutil, socket, subprocess, time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 
 try:
@@ -10,26 +11,25 @@ try:
 except ImportError:
     _PSUTIL = False
 
-_SYS = platform.system()  # 'Linux', 'Darwin', 'Windows'
+_SYS = platform.system()
 
-# Enable ANSI colour codes on Windows 10+
 if _SYS == 'Windows':
     os.system('')
 
-# ANSI — monochrome only
+# Monochrome ANSI
 RST  = '\033[0m'
 BOLD = '\033[1m'
-DIM  = '\033[2m'
-CYN  = BOLD        # cat
-YLW  = BOLD        # labels
-WHT  = RST         # values
-MGT  = BOLD        # user@host
-GRN  = ''          # bar (no colour)
-RED  = ''          # bar (no colour)
 
-# ASCII cats 
+# Compiled once at import time
+_VENDOR_TAG = re.compile(r'^(AMD|ATI|NVIDIA|Intel)[/\s]', re.I)
+
+_DMI_PLACEHOLDERS = {
+    'None', 'Default string', 'To be filled by OEM',
+    'System Product Name', 'All Series', 'OEM',
+    'Not Applicable', 'Not Specified',
+}
+
 CATS = [
-    
     [
         r"   /\_____/\   ",
         r"  /  o   o  \  ",
@@ -42,6 +42,7 @@ CATS = [
 ]
 
 # helpers
+
 def run(*cmd):
     try:
         r = subprocess.run(
@@ -55,18 +56,23 @@ def run(*cmd):
     except Exception:
         return ''
 
+def has(cmd):
+    return shutil.which(cmd) is not None
+
+def cmd_lines(*args):
+    out = run(*args)
+    return out.splitlines() if out else []
+
 def bar(pct, width=10):
     filled = round(width * pct / 100)
     return f'[{"█" * filled}{"░" * (width - filled)}]'
 
-def color_palette():
+def greyscale_strip():
     block = '   '
-    # greyscale ramp from dark to light using 256-colour codes 232–255
-    steps = [232, 238, 244, 247, 250, 253, 255]
-    row = ''.join(f'\033[48;5;{n}m{block}' for n in steps) + RST
-    return [row]
+    return ''.join(f'\033[48;5;{n}m{block}' for n in [232, 238, 244, 247, 250, 253, 255]) + RST
 
 # info collectors
+
 def get_user():
     return os.environ.get('USER') or os.environ.get('USERNAME') or 'user'
 
@@ -79,7 +85,7 @@ def get_os():
             with open('/etc/os-release') as f:
                 d = dict(l.strip().split('=', 1) for l in f if '=' in l)
             return d.get('PRETTY_NAME', 'Linux').strip('"\'')
-        except Exception:
+        except OSError:
             return f'Linux {platform.release()}'
     if _SYS == 'Darwin':
         name = run('sw_vers', '-productName') or 'macOS'
@@ -96,21 +102,16 @@ def get_host_model():
             '/sys/devices/virtual/dmi/id/board_name',
         ):
             try:
-                val = open(path).read().strip()
-                PLACEHOLDERS = {
-                    'None', 'Default string', 'To be filled by OEM',
-                    'System Product Name', 'All Series', 'OEM',
-                    'Not Applicable', 'Not Specified',
-                }
-                if val and val not in PLACEHOLDERS:
+                with open(path) as f:
+                    val = f.read().strip()
+                if val and val not in _DMI_PLACEHOLDERS:
                     return val
-            except Exception:
+            except OSError:
                 pass
     elif _SYS == 'Darwin':
         return run('sysctl', '-n', 'hw.model') or None
     elif _SYS == 'Windows':
-        out = run('wmic', 'computersystem', 'get', 'model', '/value')
-        for line in out.splitlines():
+        for line in run('wmic', 'computersystem', 'get', 'model', '/value').splitlines():
             if '=' in line:
                 v = line.split('=', 1)[1].strip()
                 if v:
@@ -118,13 +119,10 @@ def get_host_model():
     return None
 
 def get_kernel():
-    if _SYS == 'Windows':
-        return platform.version()
-    return platform.release()
+    return platform.version() if _SYS == 'Windows' else platform.release()
 
 def get_uptime():
     if _PSUTIL:
-        import time
         secs = int(time.time() - psutil.boot_time())
         td   = timedelta(seconds=secs)
         h, r = divmod(td.seconds, 3600)
@@ -134,8 +132,7 @@ def get_uptime():
         if h:       parts.append(f'{h}h')
         parts.append(f'{m}m')
         return ' '.join(parts)
-    out = run('uptime', '-p')
-    return out.replace('up ', '') or 'Unknown'
+    return run('uptime', '-p').replace('up ', '') or 'Unknown'
 
 def get_packages():
     counts = []
@@ -144,93 +141,63 @@ def get_packages():
         if lines:
             counts.append(f'{len(lines)} ({label})')
 
-    def cmd_lines(*args):
-        out = run(*args)
-        return out.splitlines() if out else []
-
-    def has(cmd):
-        return shutil.which(cmd) is not None
-
     if _SYS == 'Darwin':
         if has('brew'):
             add('brew', cmd_lines('brew', 'list'))
         if has('port'):
-            # macports output has leading spaces on package lines
             add('macports', [l for l in cmd_lines('port', 'installed') if l.startswith('  ')])
 
     elif _SYS == 'Windows':
         if has('winget'):
-            lines = [l for l in cmd_lines('winget', 'list')
-                     if l.strip() and not l.startswith('-') and not l.lower().startswith('name')]
-            add('winget', lines)
+            add('winget', [l for l in cmd_lines('winget', 'list')
+                           if l.strip() and not l.startswith('-') and not l.lower().startswith('name')])
         if has('choco'):
-            lines = [l for l in cmd_lines('choco', 'list', '--local-only')
-                     if l.strip() and 'packages installed' not in l]
-            add('choco', lines)
+            add('choco', [l for l in cmd_lines('choco', 'list', '--local-only')
+                          if l.strip() and 'packages installed' not in l])
         if has('scoop'):
-            lines = [l for l in cmd_lines('scoop', 'list')
-                     if l.strip() and not l.startswith('---') and not l.lower().startswith('name')]
-            add('scoop', lines)
+            add('scoop', [l for l in cmd_lines('scoop', 'list')
+                          if l.strip() and not l.startswith('---') and not l.lower().startswith('name')])
 
-    else:  # Linux / BSD / anything else
-        # Portage (Gentoo) — file-based, no binary needed
+    else:  # Linux / BSD
         portage = glob.glob('/var/db/pkg/*/*')
         if portage:
             add('portage', portage)
-
         if has('pacman'):
             add('pacman', cmd_lines('pacman', '-Qq'))
-
         if has('dpkg-query'):
             add('dpkg', cmd_lines('dpkg-query', '-f', '${Package}\n', '-W'))
-
         if has('rpm'):
             add('rpm', cmd_lines('rpm', '-qa', '--queryformat', '%{NAME}\n'))
-
         if has('xbps-query'):
             add('xbps', cmd_lines('xbps-query', '-l'))
-
         if has('apk'):
             add('apk', cmd_lines('apk', 'list', '--installed'))
-
         if has('eopkg'):
             add('eopkg', cmd_lines('eopkg', 'list-installed', '-q'))
-
         if has('guix'):
             add('guix', cmd_lines('guix', 'package', '--list-installed'))
-
-        # KISS Linux — file-based
-        kiss_db = '/var/db/kiss/installed'
-        if os.path.isdir(kiss_db):
-            add('kiss', [d for d in os.listdir(kiss_db) if os.path.isdir(f'{kiss_db}/{d}')])
-
-        # pkg_info (OpenBSD, NetBSD)
+        if os.path.isdir('/var/db/kiss/installed'):
+            add('kiss', [d for d in os.listdir('/var/db/kiss/installed')
+                         if os.path.isdir(f'/var/db/kiss/installed/{d}')])
         if has('pkg_info'):
             add('pkg_info', cmd_lines('pkg_info'))
-
-        # pkg (FreeBSD)
         if has('pkg'):
             add('pkg', cmd_lines('pkg', 'query', '%n'))
-
         if has('brew'):
             add('brew', cmd_lines('brew', 'list'))
 
-    # Universal extras — additive on any platform
+    # Additive on any platform
     if has('nix-env'):
         add('nix', cmd_lines('nix-env', '-q'))
-
     if has('snap'):
-        lines = [l for l in cmd_lines('snap', 'list') if not l.lower().startswith('name')]
-        add('snap', lines)
-
+        add('snap', [l for l in cmd_lines('snap', 'list') if not l.lower().startswith('name')])
     if has('flatpak'):
         add('flatpak', cmd_lines('flatpak', 'list', '--app', '--columns=name'))
 
-    return ', '.join(counts) if counts else 'Unknown'
+    return ', '.join(counts) or 'Unknown'
 
 def get_shell():
     if _SYS == 'Windows':
-        # Prefer PowerShell if running inside it
         psver = run('powershell', '-NoProfile', '-Command', '$PSVersionTable.PSVersion.ToString()')
         if psver:
             return f'powershell {psver}'
@@ -248,16 +215,13 @@ def get_shell():
 
 def get_terminal():
     if _SYS == 'Windows':
-        if os.environ.get('WT_SESSION'):
-            return 'Windows Terminal'
-        if os.environ.get('ConEmuBuild'):
-            return 'ConEmu'
+        if os.environ.get('WT_SESSION'):  return 'Windows Terminal'
+        if os.environ.get('ConEmuBuild'): return 'ConEmu'
         return 'cmd'
-    for v in ('TERM_PROGRAM', 'COLORTERM', 'TERM'):
-        val = os.environ.get(v)
-        if val:
-            return val
-    return 'Unknown'
+    return next(
+        (os.environ[v] for v in ('TERM_PROGRAM', 'COLORTERM', 'TERM') if os.environ.get(v)),
+        'Unknown',
+    )
 
 def get_cpu():
     name = None
@@ -268,87 +232,67 @@ def get_cpu():
                     if line.startswith('model name'):
                         name = line.split(':', 1)[1].strip()
                         break
-        except Exception:
+        except OSError:
             pass
     elif _SYS == 'Darwin':
         name = run('sysctl', '-n', 'machdep.cpu.brand_string')
     elif _SYS == 'Windows':
-        out = run('wmic', 'cpu', 'get', 'name', '/value')
-        for line in out.splitlines():
+        for line in run('wmic', 'cpu', 'get', 'name', '/value').splitlines():
             if line.startswith('Name='):
                 name = line.split('=', 1)[1].strip()
                 break
 
-    if not name:
-        name = platform.processor() or 'Unknown'
-
-    name = re.sub(r'\(R\)|\(TM\)', '', name)
-    name = re.sub(r'\s+', ' ', name).strip()
+    name = re.sub(r'\s+', ' ', re.sub(r'\(R\)|\(TM\)', '', name or platform.processor() or 'Unknown')).strip()
 
     if _PSUTIL:
-        c    = psutil.cpu_count(logical=False)
-        t    = psutil.cpu_count(logical=True)
-        freq = psutil.cpu_freq()
-        f_s  = f' @ {freq.current/1000:.1f}GHz' if freq else ''
-        return f'{name}{f_s} ({c}C/{t}T)'
+        cores   = psutil.cpu_count(logical=False)
+        threads = psutil.cpu_count(logical=True)
+        freq    = psutil.cpu_freq()
+        freq_str = f' @ {freq.current/1000:.1f}GHz' if freq else ''
+        return f'{name}{freq_str} ({cores}C/{threads}T)'
     return name
 
 def get_gpu():
-    # NVIDIA — works on Linux, Windows, and macOS
     out = run('nvidia-smi', '--query-gpu=name', '--format=csv,noheader,nounits')
     if out:
         return out.splitlines()[0].strip()
     if _SYS == 'Darwin':
-        out = run('system_profiler', 'SPDisplaysDataType')
-        for line in out.splitlines():
+        for line in run('system_profiler', 'SPDisplaysDataType').splitlines():
             if 'Chipset Model' in line or 'Chip Model' in line:
                 return line.split(':', 1)[1].strip()
     elif _SYS == 'Windows':
-        out = run('wmic', 'path', 'win32_VideoController', 'get', 'name', '/value')
-        for line in out.splitlines():
-            if line.startswith('Name=') and '=' in line:
+        for line in run('wmic', 'path', 'win32_VideoController', 'get', 'name', '/value').splitlines():
+            if line.startswith('Name='):
                 v = line.split('=', 1)[1].strip()
                 if v:
                     return v
-    else:  # Linux
-        out = run('lspci')
-        for line in out.splitlines():
+    else:
+        for line in run('lspci').splitlines():
             if any(k in line for k in ('VGA', '3D controller', 'Display controller')):
-                # lspci puts the human-readable product name in the last [brackets]
-                # e.g. "Navi 48 [Radeon RX 9070 XT]" or "GA102 [GeForce RTX 3080]"
-                # vendor tags like [AMD/ATI] appear earlier and match this pattern
-                vendor_tag = re.compile(r'^(AMD|ATI|NVIDIA|Intel)[/\s]', re.I)
                 brackets = re.findall(r'\[([^\]]+)\]', line)
-                product = next(
-                    (b for b in reversed(brackets) if not vendor_tag.match(b)),
-                    None,
-                )
+                product  = next((b for b in reversed(brackets) if not _VENDOR_TAG.match(b)), None)
                 if product:
                     return product
-                # fallback: strip brackets and return the description
-                gpu = line.split(':', 2)[-1].strip()
-                return re.sub(r'\s*\[.*?\]', '', gpu).strip()
+                return re.sub(r'\s*\[.*?\]', '', line.split(':', 2)[-1]).strip()
     return 'Unknown'
 
 def get_ram():
     if _PSUTIL:
-        v    = psutil.virtual_memory()
-        used = v.used  / 2**30
-        tot  = v.total / 2**30
-        return f'{used:.1f}G / {tot:.1f}G  {bar(v.percent)}'
+        v = psutil.virtual_memory()
+        return f'{v.used/2**30:.1f}G / {v.total/2**30:.1f}G  {bar(v.percent)}'
     if _SYS == 'Linux':
         try:
             info = {}
             with open('/proc/meminfo') as f:
                 for line in f:
+                    if ':' not in line:
+                        continue
                     k, v = line.split(':', 1)
                     info[k.strip()] = int(v.strip().split()[0])
             total = info['MemTotal']
-            avail = info.get('MemAvailable', info.get('MemFree', 0))
-            used  = total - avail
-            pct   = used / total * 100
-            return f'{used/2**20:.1f}G / {total/2**20:.1f}G  {bar(pct)}'
-        except Exception:
+            used  = total - info.get('MemAvailable', info.get('MemFree', 0))
+            return f'{used/2**20:.1f}G / {total/2**20:.1f}G  {bar(used/total*100)}'
+        except (OSError, KeyError):
             pass
     return 'Unknown'
 
@@ -356,56 +300,56 @@ def get_disk():
     if _PSUTIL:
         d = psutil.disk_usage('/')
         return f'{d.used/2**30:.1f}G / {d.total/2**30:.1f}G  {bar(d.percent)}'
-    root = 'C:\\' if _SYS == 'Windows' else '/'
-    out  = run('df', '-h', root)
-    lines = out.splitlines()
+    root  = 'C:\\' if _SYS == 'Windows' else '/'
+    lines = run('df', '-h', root).splitlines()
     if len(lines) >= 2:
         p = lines[1].split()
         return f'{p[2]} / {p[1]} ({p[4]})'
     return 'Unknown'
 
 # main
+
 def main():
     user = get_user()
     host = get_hostname()
     cat  = random.choice(CATS)
 
-    rows = []
-    rows.append(f'{BOLD}{MGT}{user}{WHT}@{MGT}{host}{RST}')
-    rows.append(f'{WHT}{"─" * (len(user) + len(host) + 1)}{RST}')
+    collectors = {
+        'Host':     get_host_model,
+        'OS':       get_os,
+        'Kernel':   get_kernel,
+        'Uptime':   get_uptime,
+        'Packages': get_packages,
+        'Shell':    get_shell,
+        'Terminal': get_terminal,
+        'CPU':      get_cpu,
+        'GPU':      get_gpu,
+        'RAM':      get_ram,
+        'Disk (/)': get_disk,
+    }
 
-    def add(label, val):
-        if val:
-            rows.append(f'{BOLD}{YLW}{label}{RST}: {WHT}{val}{RST}')
+    with ThreadPoolExecutor() as pool:
+        results = {k: pool.submit(fn) for k, fn in collectors.items()}
+        results = {k: f.result() for k, f in results.items()}
 
-    model = get_host_model()
-    if model:
-        add('Host',     model)
-    add('OS',       get_os())
-    add('Kernel',   get_kernel())
-    add('Uptime',   get_uptime())
-    add('Packages', get_packages())
-    add('Shell',    get_shell())
-    add('Terminal', get_terminal())
-    add('CPU',      get_cpu())
-    add('GPU',      get_gpu())
-    add('RAM',      get_ram())
-    add('Disk (/)', get_disk())
-
-    rows.append('')
-    rows.extend(color_palette())
+    rows = [
+        f'{BOLD}{user}{RST}@{BOLD}{host}{RST}',
+        '─' * (len(user) + len(host) + 1),
+        *[f'{BOLD}{label}{RST}: {val}' for label, val in results.items() if val],
+        '',
+        greyscale_strip(),
+    ]
 
     cat_w    = max(len(l) for l in cat)
-    cat_rows = [f'{CYN}{l.ljust(cat_w)}{RST}' for l in cat]
+    cat_rows = [f'{BOLD}{l.ljust(cat_w)}{RST}' for l in cat]
 
-    while len(cat_rows) < len(rows):
-        cat_rows.append(' ' * cat_w)
-    while len(rows) < len(cat_rows):
-        rows.append('')
+    n = max(len(cat_rows), len(rows))
+    cat_rows += [' ' * cat_w] * (n - len(cat_rows))
+    rows     += [''] * (n - len(rows))
 
     print()
-    for cat_line, info_line in zip(cat_rows, rows):
-        print(f'  {cat_line}    {info_line}')
+    for c, r in zip(cat_rows, rows):
+        print(f'  {c}    {r}')
     print()
 
 if __name__ == '__main__':
