@@ -1,14 +1,11 @@
-# meowfetch
+meowfetch
 
-a neofetch-inspired system info tool for the terminal, but with a cat. because why not.
-
-displays your system specs next to some ascii cat art, which gets randomly picked each time you run it. nothing groundbreaking, just a fun little script.
+a neofetch-inspired system info tool for the terminal, but with an ascii cat :3
 
 ![screenshot placeholder]
 
 ---
-
-## what it shows
+what it shows
 
 - OS, kernel, uptime
 - CPU (model, clock speed, core/thread count)
@@ -18,15 +15,14 @@ displays your system specs next to some ascii cat art, which gets randomly picke
 - a colour palette strip at the bottom
 
 ---
-
-## requirements
+requirements
 
 - Python 3.6+
 - `psutil` — used for RAM, disk, CPU info. the script still works without it but the info will be less accurate.
 
 ---
 
-## installation
+installation
 
 clone the repo and install the dependency:
 
@@ -50,17 +46,3 @@ sudo cp meowfetch.py /usr/local/bin/meowfetch
 ```
 
 after that you can just type `meowfetch` anywhere.
-
----
-
-## notes
-
-- tested on Linux (Gentoo, Arch, Debian-based) and macOS. should work on Windows too but it's less tested there.
-- GPU detection works out of the box for NVIDIA (via `nvidia-smi`) and AMD/Intel (via `lspci` on Linux, `system_profiler` on macOS, `wmic` on Windows).
-- package count works with pacman, dpkg, rpm, flatpak, and brew. if you're on something else it'll just say Unknown.
-
----
-
-## licence
-
-do whatever you want with it, i don't care. MIT if you need something to put in a field.
