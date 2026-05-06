@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Meowfetch, a fetch script with a pawesome twist!"""
 
-import os, platform, random, re, socket, subprocess
+import glob, os, platform, random, re, shutil, socket, subprocess
 from datetime import timedelta
 
 try:
@@ -132,71 +132,93 @@ def get_uptime():
     return out.replace('up ', '') or 'Unknown'
 
 def get_packages():
-    if _SYS == 'Darwin':
-        out = run('brew', 'list')
-        if out:
-            pkgs = [f'{len(out.splitlines())} (brew)']
-            flat = run('flatpak', 'list', '--app', '--columns=name')
-            if flat:
-                pkgs.append(f'{len(flat.splitlines())} (flatpak)')
-            return ', '.join(pkgs)
-        return 'Unknown'
-    if _SYS == 'Windows':
-        out = run('winget', 'list')
-        if out:
-            pkgs = [l for l in out.splitlines()
-                    if l.strip() and not l.startswith('-') and not l.lower().startswith('name')]
-            if pkgs:
-                return f'{len(pkgs)} (winget)'
-        out = run('choco', 'list', '--local-only')
-        if out:
-            pkgs = [l for l in out.splitlines()
-                    if l.strip() and 'packages installed' not in l]
-            return f'{len(pkgs)} (choco)'
-        return 'Unknown'
-    # Linux — try each package manager, append flatpak if present
     counts = []
 
-    # Portage (Gentoo) — read directly from the package db, no tool needed
-    import glob as _glob
-    portage_pkgs = _glob.glob('/var/db/pkg/*/*')
-    if portage_pkgs:
-        counts.append(f'{len(portage_pkgs)} (portage)')
+    def add(label, lines):
+        if lines:
+            counts.append(f'{len(lines)} ({label})')
 
-    if not counts:
-        out = run('pacman', '-Qq')
-        if out:
-            counts.append(f'{len(out.splitlines())} (pacman)')
+    def cmd_lines(*args):
+        out = run(*args)
+        return out.splitlines() if out else []
 
-    if not counts:
-        out = run('dpkg-query', '-f', '${Package}\n', '-W')
-        if out:
-            counts.append(f'{len(out.splitlines())} (dpkg)')
+    def has(cmd):
+        return shutil.which(cmd) is not None
 
-    if not counts:
-        out = run('rpm', '-qa', '--queryformat', '%{NAME}\n')
-        if out:
-            counts.append(f'{len(out.splitlines())} (rpm)')
+    if _SYS == 'Darwin':
+        if has('brew'):
+            add('brew', cmd_lines('brew', 'list'))
+        if has('port'):
+            # macports output has leading spaces on package lines
+            add('macports', [l for l in cmd_lines('port', 'installed') if l.startswith('  ')])
 
-    if not counts:
-        out = run('xbps-query', '-l')
-        if out:
-            counts.append(f'{len(out.splitlines())} (xbps)')
+    elif _SYS == 'Windows':
+        if has('winget'):
+            lines = [l for l in cmd_lines('winget', 'list')
+                     if l.strip() and not l.startswith('-') and not l.lower().startswith('name')]
+            add('winget', lines)
+        if has('choco'):
+            lines = [l for l in cmd_lines('choco', 'list', '--local-only')
+                     if l.strip() and 'packages installed' not in l]
+            add('choco', lines)
+        if has('scoop'):
+            lines = [l for l in cmd_lines('scoop', 'list')
+                     if l.strip() and not l.startswith('---') and not l.lower().startswith('name')]
+            add('scoop', lines)
 
-    if not counts:
-        out = run('apk', 'list', '--installed')
-        if out:
-            counts.append(f'{len(out.splitlines())} (apk)')
+    else:  # Linux / BSD / anything else
+        # Portage (Gentoo) — file-based, no binary needed
+        portage = glob.glob('/var/db/pkg/*/*')
+        if portage:
+            add('portage', portage)
 
-    if not counts:
-        out = run('eopkg', 'list-installed', '-q')
-        if out:
-            counts.append(f'{len(out.splitlines())} (eopkg)')
+        if has('pacman'):
+            add('pacman', cmd_lines('pacman', '-Qq'))
 
-    # Flatpak is additive — append if present alongside anything
-    flat = run('flatpak', 'list', '--app', '--columns=name')
-    if flat:
-        counts.append(f'{len(flat.splitlines())} (flatpak)')
+        if has('dpkg-query'):
+            add('dpkg', cmd_lines('dpkg-query', '-f', '${Package}\n', '-W'))
+
+        if has('rpm'):
+            add('rpm', cmd_lines('rpm', '-qa', '--queryformat', '%{NAME}\n'))
+
+        if has('xbps-query'):
+            add('xbps', cmd_lines('xbps-query', '-l'))
+
+        if has('apk'):
+            add('apk', cmd_lines('apk', 'list', '--installed'))
+
+        if has('eopkg'):
+            add('eopkg', cmd_lines('eopkg', 'list-installed', '-q'))
+
+        if has('guix'):
+            add('guix', cmd_lines('guix', 'package', '--list-installed'))
+
+        # KISS Linux — file-based
+        kiss_db = '/var/db/kiss/installed'
+        if os.path.isdir(kiss_db):
+            add('kiss', [d for d in os.listdir(kiss_db) if os.path.isdir(f'{kiss_db}/{d}')])
+
+        # pkg_info (OpenBSD, NetBSD)
+        if has('pkg_info'):
+            add('pkg_info', cmd_lines('pkg_info'))
+
+        # pkg (FreeBSD)
+        if has('pkg'):
+            add('pkg', cmd_lines('pkg', 'query', '%n'))
+
+        if has('brew'):
+            add('brew', cmd_lines('brew', 'list'))
+
+    # Universal extras — additive on any platform
+    if has('nix-env'):
+        add('nix', cmd_lines('nix-env', '-q'))
+
+    if has('snap'):
+        lines = [l for l in cmd_lines('snap', 'list') if not l.lower().startswith('name')]
+        add('snap', lines)
+
+    if has('flatpak'):
+        add('flatpak', cmd_lines('flatpak', 'list', '--app', '--columns=name'))
 
     return ', '.join(counts) if counts else 'Unknown'
 
