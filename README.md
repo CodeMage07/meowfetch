@@ -2,7 +2,7 @@ meowfetch
 
 a neofetch-inspired system info tool for the terminal, but with an ascii cat :3
 
-![screenshot placeholder]
+![preview](preview.png)
 
 ---
 what it shows
