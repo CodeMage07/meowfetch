@@ -279,20 +279,17 @@ def get_cpu():
         if hz.isdigit():
             freq_str = f' @ {int(hz)/1e9:.1f}GHz'
     elif _SYS == 'Windows':
-        for line in run('wmic', 'cpu', 'get', 'name', '/value').splitlines():
-            if line.startswith('Name='):
-                name = line.split('=', 1)[1].strip()
         try:
-            for line in run('wmic', 'cpu', 'get', 'NumberOfCores', '/value').splitlines():
-                if line.startswith('NumberOfCores='):
-                    cores = int(line.split('=')[1])
-            for line in run('wmic', 'cpu', 'get', 'NumberOfLogicalProcessors', '/value').splitlines():
-                if line.startswith('NumberOfLogicalProcessors='):
-                    threads = int(line.split('=')[1])
-            for line in run('wmic', 'cpu', 'get', 'CurrentClockSpeed', '/value').splitlines():
-                if line.startswith('CurrentClockSpeed='):
-                    freq_str = f' @ {int(line.split("=")[1])/1000:.1f}GHz'
-        except (IndexError, ValueError):
+            raw = run('wmic', 'cpu', 'get', 'Name,NumberOfCores,NumberOfLogicalProcessors,CurrentClockSpeed', '/value')
+            vals = {k: v for k, v in (l.split('=', 1) for l in raw.splitlines() if '=' in l)}
+            name    = vals.get('Name', '').strip() or None
+            if vals.get('NumberOfCores', '').strip():
+                cores   = int(vals['NumberOfCores'])
+            if vals.get('NumberOfLogicalProcessors', '').strip():
+                threads = int(vals['NumberOfLogicalProcessors'])
+            if vals.get('CurrentClockSpeed', '').strip():
+                freq_str = f' @ {int(vals["CurrentClockSpeed"])/1000:.1f}GHz'
+        except (ValueError, KeyError):
             pass
 
     name = name or platform.processor() or 'Unknown'
@@ -344,8 +341,8 @@ def get_ram():
         try:
             total = int(run('sysctl', '-n', 'hw.memsize'))
             vm = run('vm_stat')
-            m = re.search(r'page size of (\d+)', vm)
-            page_size = int(m.group(1)) if m else 4096
+            ps = re.search(r'page size of (\d+)', vm)
+            page_size = int(ps.group(1)) if ps else 4096
             pages = {m.group(1).lower(): int(m.group(2))
                      for m in (re.match(r'Pages\s+(.+?):\s+(\d+)', l) for l in vm.splitlines()) if m}
             avail = (pages.get('free', 0) + pages.get('speculative', 0) + pages.get('inactive', 0)) * page_size
@@ -400,7 +397,7 @@ def install():
         if local_bin not in os.environ.get('PATH', '').split(':'):
             shell = os.environ.get('SHELL', '')
             rc = '~/.zshrc' if 'zsh' in shell else '~/.bashrc'
-            print(f'\nadd to PATH:')
+            print('\nadd to PATH:')
             print(f'  echo \'export PATH="$HOME/.local/bin:$PATH"\' >> {rc}')
 
 # main
