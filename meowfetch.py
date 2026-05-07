@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Meowfetch — a fetch script with a pawesome twist"""
 
-import argparse, glob, os, platform, random, re, shutil, socket, subprocess, time
+import argparse, glob, os, platform, random, re, shutil, subprocess, time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 
@@ -13,7 +13,6 @@ if _SYS == 'Windows':
 RST  = '\033[0m'
 BOLD = '\033[1m'
 
-_WIN_FLAGS  = subprocess.CREATE_NO_WINDOW if _SYS == 'Windows' else 0
 _VENDOR_TAG = re.compile(r'^(AMD|ATI|NVIDIA|Intel)[/\s]', re.I)
 
 CATS = [
@@ -67,8 +66,9 @@ CATS = [
 # helpers
 
 def run(*cmd):
+    flags = subprocess.CREATE_NO_WINDOW if _SYS == 'Windows' else 0
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=3, creationflags=_WIN_FLAGS)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=3, creationflags=flags)
         return result.stdout.strip()
     except Exception:
         return ''
@@ -113,7 +113,7 @@ def get_user():
     return os.environ.get('USER') or os.environ.get('USERNAME') or 'user'
 
 def get_hostname():
-    return socket.gethostname()
+    return platform.node()
 
 def get_os():
     if _SYS == 'Linux':
@@ -154,7 +154,6 @@ def get_uptime():
             return fmt_secs((datetime.now() - boot).total_seconds())
     return run('uptime', '-p').replace('up ', '') or 'Unknown'
 
-# (label, binary, args, line-filter or None)  — requires Python 3.10+ for match/case
 _PKG_TABLE = {
     'Darwin': [
         ('brew',     'brew', ('brew', 'list'),      None),
@@ -200,7 +199,7 @@ def get_packages():
                 lines = cmd_lines(*args)
                 add(label, [l for l in lines if filt(l)] if filt else lines)
 
-    match _SYS:
+    match _SYS:  # requires Python 3.10+
         case 'Darwin':
             process(_PKG_TABLE['Darwin'])
         case 'Windows':
@@ -281,13 +280,13 @@ def get_cpu():
     elif _SYS == 'Windows':
         try:
             raw = run('wmic', 'cpu', 'get', 'Name,NumberOfCores,NumberOfLogicalProcessors,CurrentClockSpeed', '/value')
-            vals = {k: v for k, v in (l.split('=', 1) for l in raw.splitlines() if '=' in l)}
-            name    = vals.get('Name', '').strip() or None
-            if vals.get('NumberOfCores', '').strip():
+            vals = {k.strip(): v.strip() for k, v in (l.split('=', 1) for l in raw.splitlines() if '=' in l)}
+            name = vals.get('Name') or None
+            if vals.get('NumberOfCores'):
                 cores   = int(vals['NumberOfCores'])
-            if vals.get('NumberOfLogicalProcessors', '').strip():
+            if vals.get('NumberOfLogicalProcessors'):
                 threads = int(vals['NumberOfLogicalProcessors'])
-            if vals.get('CurrentClockSpeed', '').strip():
+            if vals.get('CurrentClockSpeed'):
                 freq_str = f' @ {int(vals["CurrentClockSpeed"])/1000:.1f}GHz'
         except (ValueError, KeyError):
             pass
@@ -333,7 +332,8 @@ def get_ram():
                     key, val = line.split(':', 1)
                     info[key.strip()] = int(val.strip().split()[0])
             total = info['MemTotal']
-            used  = total - info.get('MemAvailable', info.get('MemFree', 0))
+            avail = info.get('MemAvailable') or info.get('MemFree', 0)
+            used  = total - avail
             return f'{used/2**20:.1f}G / {total/2**20:.1f}G  {bar(used/total*100)}'
         except (OSError, KeyError):
             pass
@@ -365,12 +365,12 @@ def get_ram():
     return 'Unknown'
 
 def get_disk():
-    root  = 'C:\\' if _SYS == 'Windows' else '/'
-    lines = run('df', '-h', root).splitlines()
-    if len(lines) >= 2:
-        parts = lines[1].split()
-        return f'{parts[2]} / {parts[1]} ({parts[4]})'
-    return 'Unknown'
+    root = 'C:\\' if _SYS == 'Windows' else '/'
+    try:
+        d = shutil.disk_usage(root)
+        return f'{d.used/2**30:.1f}G / {d.total/2**30:.1f}G  {bar(d.used/d.total*100)}'
+    except OSError:
+        return 'Unknown'
 
 # install
 
