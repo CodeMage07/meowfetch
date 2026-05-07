@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Meowfetch — a fetch script with a pawesome twist"""
 
-import argparse, glob, os, platform, random, re, shutil, socket, subprocess, sys, time
+import argparse, glob, os, platform, random, re, shutil, socket, subprocess, time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 
@@ -84,6 +84,15 @@ def bar(pct, width=10):
     filled = round(width * pct / 100)
     return f'[{"█" * filled}{"░" * (width - filled)}]'
 
+def fmt_secs(secs):
+    td = timedelta(seconds=int(secs))
+    h, rem = divmod(td.seconds, 3600)
+    parts = []
+    if td.days: parts.append(f'{td.days}d')
+    if h:       parts.append(f'{h}h')
+    parts.append(f'{rem // 60}m')
+    return ' '.join(parts)
+
 _COLOURS = {
     'red':     '\033[31m',
     'green':   '\033[32m',
@@ -99,15 +108,6 @@ def color_strip():
     return [normal, bright]
 
 # info collectors
-
-def _fmt_secs(secs):
-    td = timedelta(seconds=int(secs))
-    h, rem = divmod(td.seconds, 3600)
-    parts = []
-    if td.days: parts.append(f'{td.days}d')
-    if h:       parts.append(f'{h}h')
-    parts.append(f'{rem // 60}m')
-    return ' '.join(parts)
 
 def get_user():
     return os.environ.get('USER') or os.environ.get('USERNAME') or 'user'
@@ -138,20 +138,20 @@ def get_uptime():
     if _SYS == 'Linux':
         try:
             with open('/proc/uptime') as f:
-                return _fmt_secs(float(f.read().split()[0]))
+                return fmt_secs(float(f.read().split()[0]))
         except OSError:
             pass
     if _SYS == 'Darwin':
         raw = run('sysctl', '-n', 'kern.boottime')
         m = re.search(r'sec\s*=\s*(\d+)', raw)
         if m:
-            return _fmt_secs(time.time() - int(m.group(1)))
+            return fmt_secs(time.time() - int(m.group(1)))
     if _SYS == 'Windows':
         raw = run('wmic', 'os', 'get', 'LastBootUpTime', '/value')
         m = re.search(r'=(\d{14})', raw)
         if m:
             boot = datetime.strptime(m.group(1), '%Y%m%d%H%M%S')
-            return _fmt_secs((datetime.now() - boot).total_seconds())
+            return fmt_secs((datetime.now() - boot).total_seconds())
     return run('uptime', '-p').replace('up ', '') or 'Unknown'
 
 # (label, binary, args, line-filter or None)  — requires Python 3.10+ for match/case
@@ -226,9 +226,9 @@ def get_shell():
     sh = os.environ.get('SHELL', '')
     if not sh:
         return 'Unknown'
-    name  = os.path.basename(sh)
-    match = re.search(r'[\d.]+', run(sh, '--version'))
-    return f'{name} {match.group()}' if match else name
+    name = os.path.basename(sh)
+    m    = re.search(r'[\d.]+', run(sh, '--version'))
+    return f'{name} {m.group()}' if m else name
 
 def get_terminal():
     if _SYS == 'Windows':
@@ -251,13 +251,14 @@ def get_cpu():
         try:
             with open('/proc/cpuinfo') as f:
                 content = f.read()
-            for line in content.splitlines():
-                if line.startswith('model name') and name is None:
-                    name = line.split(':', 1)[1].strip()
-            threads = sum(1 for l in content.splitlines() if l.startswith('processor'))
+            threads = 0
             phys, pid = set(), '0'
             for line in content.splitlines():
-                if line.startswith('physical id'):
+                if line.startswith('processor'):
+                    threads += 1
+                elif line.startswith('model name') and name is None:
+                    name = line.split(':', 1)[1].strip()
+                elif line.startswith('physical id'):
                     pid = line.split(':', 1)[1].strip()
                 elif line.startswith('core id'):
                     phys.add((pid, line.split(':', 1)[1].strip()))
@@ -343,7 +344,8 @@ def get_ram():
         try:
             total = int(run('sysctl', '-n', 'hw.memsize'))
             vm = run('vm_stat')
-            page_size = int(re.search(r'page size of (\d+)', vm).group(1)) if re.search(r'page size of (\d+)', vm) else 4096
+            m = re.search(r'page size of (\d+)', vm)
+            page_size = int(m.group(1)) if m else 4096
             pages = {m.group(1).lower(): int(m.group(2))
                      for m in (re.match(r'Pages\s+(.+?):\s+(\d+)', l) for l in vm.splitlines()) if m}
             avail = (pages.get('free', 0) + pages.get('speculative', 0) + pages.get('inactive', 0)) * page_size
