@@ -26,7 +26,7 @@ installation
 ## Linux / macOS
 
 ```bash
-mkdir -p ~/.local/bin && curl -o ~/.local/bin/meowfetch https://codeberg.org/anyasretro/meowfetch/raw/branch/main/meowfetch.py && chmod +x ~/.local/bin/meowfetch
+mkdir -p ~/.local/bin && curl -fLo ~/.local/bin/meowfetch https://codeberg.org/anyasretro/meowfetch/raw/branch/main/meowfetch.py && chmod +x ~/.local/bin/meowfetch
 ```
 
 if `~/.local/bin` isn't in your PATH yet:
@@ -44,7 +44,7 @@ echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
 ```powershell
 $bin = "$HOME\.local\bin"
 New-Item -ItemType Directory -Force $bin | Out-Null
-Invoke-WebRequest https://codeberg.org/anyasretro/meowfetch/raw/branch/main/meowfetch.py -OutFile "$bin\meowfetch.py"
+Invoke-WebRequest https://codeberg.org/anyasretro/meowfetch/raw/branch/main/meowfetch.py -OutFile "$bin\meowfetch.py" -ErrorAction Stop
 '@echo off' + "`npython `"%~dp0meowfetch.py`" %*" | Set-Content "$bin\meowfetch.bat"
 ```
 
