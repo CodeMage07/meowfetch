@@ -19,7 +19,6 @@ what it shows
 requirements
 
 - Python 3.10+
-- `psutil` — optional, but gives richer CPU/RAM/disk info. the install script will offer to add it for you.
 
 ---
 installation
@@ -28,12 +27,6 @@ one-liner — no cloning needed:
 
 ```bash
 curl -o ~/.local/bin/meowfetch https://codeberg.org/anyasretro/meowfetch/raw/branch/main/meowfetch.py && chmod +x ~/.local/bin/meowfetch
-```
-
-then optionally install `psutil` for richer CPU/RAM/disk info:
-
-```bash
-pip install --user psutil
 ```
 
 once installed, just run:

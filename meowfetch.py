@@ -3,13 +3,7 @@
 
 import argparse, glob, os, platform, random, re, shutil, socket, subprocess, sys, time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import timedelta
-
-try:
-    import psutil
-    _PSUTIL = True
-except ImportError:
-    _PSUTIL = False
+from datetime import datetime, timedelta
 
 _SYS = platform.system()
 
@@ -106,6 +100,15 @@ def color_strip():
 
 # info collectors
 
+def _fmt_secs(secs):
+    td = timedelta(seconds=int(secs))
+    h, rem = divmod(td.seconds, 3600)
+    parts = []
+    if td.days: parts.append(f'{td.days}d')
+    if h:       parts.append(f'{h}h')
+    parts.append(f'{rem // 60}m')
+    return ' '.join(parts)
+
 def get_user():
     return os.environ.get('USER') or os.environ.get('USERNAME') or 'user'
 
@@ -132,16 +135,23 @@ def get_kernel():
     return platform.version() if _SYS == 'Windows' else platform.release()
 
 def get_uptime():
-    if _PSUTIL:
-        secs             = int(time.time() - psutil.boot_time())
-        td               = timedelta(seconds=secs)
-        hours, remainder = divmod(td.seconds, 3600)
-        minutes          = remainder // 60
-        parts = []
-        if td.days: parts.append(f'{td.days}d')
-        if hours:   parts.append(f'{hours}h')
-        parts.append(f'{minutes}m')
-        return ' '.join(parts)
+    if _SYS == 'Linux':
+        try:
+            with open('/proc/uptime') as f:
+                return _fmt_secs(float(f.read().split()[0]))
+        except OSError:
+            pass
+    if _SYS == 'Darwin':
+        raw = run('sysctl', '-n', 'kern.boottime')
+        m = re.search(r'sec\s*=\s*(\d+)', raw)
+        if m:
+            return _fmt_secs(time.time() - int(m.group(1)))
+    if _SYS == 'Windows':
+        raw = run('wmic', 'os', 'get', 'LastBootUpTime', '/value')
+        m = re.search(r'=(\d{14})', raw)
+        if m:
+            boot = datetime.strptime(m.group(1), '%Y%m%d%H%M%S')
+            return _fmt_secs((datetime.now() - boot).total_seconds())
     return run('uptime', '-p').replace('up ', '') or 'Unknown'
 
 # (label, binary, args, line-filter or None)  — requires Python 3.10+ for match/case
@@ -234,34 +244,61 @@ def get_terminal():
 
 def get_cpu():
     name = None
+    cores = threads = None
+    freq_str = ''
+
     if _SYS == 'Linux':
         try:
             with open('/proc/cpuinfo') as f:
-                for line in f:
-                    if line.startswith('model name'):
-                        name = line.split(':', 1)[1].strip()
-                        break
+                content = f.read()
+            for line in content.splitlines():
+                if line.startswith('model name') and name is None:
+                    name = line.split(':', 1)[1].strip()
+            threads = sum(1 for l in content.splitlines() if l.startswith('processor'))
+            phys, pid = set(), '0'
+            for line in content.splitlines():
+                if line.startswith('physical id'):
+                    pid = line.split(':', 1)[1].strip()
+                elif line.startswith('core id'):
+                    phys.add((pid, line.split(':', 1)[1].strip()))
+            cores = len(phys) if phys else threads
+            m = re.search(r'cpu MHz\s*:\s*([\d.]+)', content)
+            if m:
+                freq_str = f' @ {float(m.group(1))/1000:.1f}GHz'
         except OSError:
             pass
     elif _SYS == 'Darwin':
         name = run('sysctl', '-n', 'machdep.cpu.brand_string')
+        try:
+            cores   = int(run('sysctl', '-n', 'hw.physicalcpu'))
+            threads = int(run('sysctl', '-n', 'hw.logicalcpu'))
+        except (ValueError, TypeError):
+            pass
+        hz = run('sysctl', '-n', 'hw.cpufrequency')
+        if hz.isdigit():
+            freq_str = f' @ {int(hz)/1e9:.1f}GHz'
     elif _SYS == 'Windows':
         for line in run('wmic', 'cpu', 'get', 'name', '/value').splitlines():
             if line.startswith('Name='):
                 name = line.split('=', 1)[1].strip()
-                break
+        try:
+            for line in run('wmic', 'cpu', 'get', 'NumberOfCores', '/value').splitlines():
+                if line.startswith('NumberOfCores='):
+                    cores = int(line.split('=')[1])
+            for line in run('wmic', 'cpu', 'get', 'NumberOfLogicalProcessors', '/value').splitlines():
+                if line.startswith('NumberOfLogicalProcessors='):
+                    threads = int(line.split('=')[1])
+            for line in run('wmic', 'cpu', 'get', 'CurrentClockSpeed', '/value').splitlines():
+                if line.startswith('CurrentClockSpeed='):
+                    freq_str = f' @ {int(line.split("=")[1])/1000:.1f}GHz'
+        except (IndexError, ValueError):
+            pass
 
     name = name or platform.processor() or 'Unknown'
     name = re.sub(r'\(R\)|\(TM\)', '', name)
     name = re.sub(r'\s+', ' ', name).strip()
-
-    if _PSUTIL:
-        cores    = psutil.cpu_count(logical=False)
-        threads  = psutil.cpu_count(logical=True)
-        freq     = psutil.cpu_freq()
-        freq_str = f' @ {freq.current/1000:.1f}GHz' if freq else ''
-        return f'{name}{freq_str} ({cores}C/{threads}T)'
-    return name
+    ct = f' ({cores}C/{threads}T)' if cores and threads else ''
+    return f'{name}{freq_str}{ct}'
 
 def get_gpu():
     out = run('nvidia-smi', '--query-gpu=name', '--format=csv,noheader,nounits')
@@ -288,9 +325,6 @@ def get_gpu():
     return 'Unknown'
 
 def get_ram():
-    if _PSUTIL:
-        mem = psutil.virtual_memory()
-        return f'{mem.used/2**30:.1f}G / {mem.total/2**30:.1f}G  {bar(mem.percent)}'
     if _SYS == 'Linux':
         try:
             info = {}
@@ -305,12 +339,33 @@ def get_ram():
             return f'{used/2**20:.1f}G / {total/2**20:.1f}G  {bar(used/total*100)}'
         except (OSError, KeyError):
             pass
+    if _SYS == 'Darwin':
+        try:
+            total = int(run('sysctl', '-n', 'hw.memsize'))
+            vm = run('vm_stat')
+            page_size = int(re.search(r'page size of (\d+)', vm).group(1)) if re.search(r'page size of (\d+)', vm) else 4096
+            pages = {m.group(1).lower(): int(m.group(2))
+                     for m in (re.match(r'Pages\s+(.+?):\s+(\d+)', l) for l in vm.splitlines()) if m}
+            avail = (pages.get('free', 0) + pages.get('speculative', 0) + pages.get('inactive', 0)) * page_size
+            used  = total - avail
+            return f'{used/2**30:.1f}G / {total/2**30:.1f}G  {bar(used/total*100)}'
+        except (OSError, AttributeError, ValueError, ZeroDivisionError):
+            pass
+    if _SYS == 'Windows':
+        try:
+            vals = {}
+            for line in run('wmic', 'OS', 'get', 'FreePhysicalMemory,TotalVisibleMemorySize', '/value').splitlines():
+                if '=' in line:
+                    k, v = line.split('=', 1)
+                    vals[k.strip()] = int(v.strip())
+            total_kb = vals['TotalVisibleMemorySize']
+            used_kb  = total_kb - vals['FreePhysicalMemory']
+            return f'{used_kb/2**20:.1f}G / {total_kb/2**20:.1f}G  {bar(used_kb/total_kb*100)}'
+        except (KeyError, ValueError, ZeroDivisionError):
+            pass
     return 'Unknown'
 
 def get_disk():
-    if _PSUTIL:
-        disk = psutil.disk_usage('/')
-        return f'{disk.used/2**30:.1f}G / {disk.total/2**30:.1f}G  {bar(disk.percent)}'
     root  = 'C:\\' if _SYS == 'Windows' else '/'
     lines = run('df', '-h', root).splitlines()
     if len(lines) >= 2:
@@ -326,10 +381,6 @@ def install():
     shutil.copy2(os.path.realpath(__file__), dest)
     os.chmod(dest, os.stat(dest).st_mode | 0o111)
     print(f'installed → {dest}')
-    if not _PSUTIL:
-        ans = input('install psutil for richer CPU/RAM/disk info? [Y/n] ').strip().lower()
-        if ans in ('', 'y', 'yes'):
-            subprocess.run([sys.executable, '-m', 'pip', 'install', '--user', 'psutil'])
     local_bin = os.path.expanduser('~/.local/bin')
     if local_bin not in os.environ.get('PATH', '').split(':'):
         print(f'\nadd {local_bin} to your PATH:')
