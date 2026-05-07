@@ -12,7 +12,7 @@ what it shows
 - OS, kernel, uptime
 - CPU (model, clock speed, core/thread count)
 - GPU
-- RAM and disk usage with a little progress bar
+- RAM and disk usage, with a progress bar
 - shell, terminal, installed packages
 
 ---
