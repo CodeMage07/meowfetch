@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Meowfetch — a fetch script with a pawesome twist"""
 
-import glob, os, platform, random, re, shutil, socket, subprocess, time
+import glob, os, platform, random, re, shutil, socket, subprocess, sys, time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 
@@ -21,11 +21,6 @@ BOLD = '\033[1m'
 
 _WIN_FLAGS  = subprocess.CREATE_NO_WINDOW if _SYS == 'Windows' else 0
 _VENDOR_TAG = re.compile(r'^(AMD|ATI|NVIDIA|Intel)[/\s]', re.I)
-_DMI_SKIP   = {
-    'None', 'Default string', 'To be filled by OEM',
-    'System Product Name', 'All Series', 'OEM',
-    'Not Applicable', 'Not Specified',
-}
 
 CATS = [
     [
@@ -77,10 +72,58 @@ def bar(pct, width=10):
     filled = round(width * pct / 100)
     return f'[{"█" * filled}{"░" * (width - filled)}]'
 
-def greyscale_strip():
-    block = '   '
-    steps = [232, 238, 244, 247, 250, 253, 255]
-    return ''.join(f'\033[48;5;{n}m{block}' for n in steps) + RST
+def _rgb_to_ansi(r, g, b):
+    mx, mn = max(r, g, b), min(r, g, b)
+    if mx == 0 or mx - mn < 30:
+        return '\033[36m'
+    if mx == r:
+        return '\033[35m' if b > g else '\033[31m'
+    if mx == g:
+        return '\033[36m' if b > r * 0.5 else '\033[32m'
+    return '\033[34m'
+
+_GNOME_ACCENT = {
+    'blue': '\033[34m', 'teal': '\033[36m', 'green': '\033[32m',
+    'yellow': '\033[33m', 'orange': '\033[33m', 'red': '\033[31m',
+    'pink': '\033[35m', 'purple': '\033[35m', 'slate': '\033[36m',
+    'bark': '\033[33m', 'sage': '\033[32m', 'olive': '\033[33m',
+    'viridian': '\033[36m',
+}
+
+def detect_accent():
+    # GNOME 42+
+    name = run('gsettings', 'get', 'org.gnome.desktop.interface', 'accent-color').strip("'")
+    if name in _GNOME_ACCENT:
+        return _GNOME_ACCENT[name]
+    # KDE Plasma — ForegroundActive in Colors:Button is the accent colour
+    try:
+        with open(os.path.expanduser('~/.config/kdeglobals')) as f:
+            section = ''
+            for line in f:
+                line = line.strip()
+                if line.startswith('['):
+                    section = line
+                elif section == '[Colors:Button]' and line.startswith('ForegroundActive='):
+                    r, g, b = (int(x) for x in line.split('=', 1)[1].split(',')[:3])
+                    return _rgb_to_ansi(r, g, b)
+    except OSError:
+        pass
+    # Xresources color4 (accent in most terminal themes)
+    for line in cmd_lines('xrdb', '-query'):
+        if '*.color4:' in line or '*color4:' in line:
+            hex_col = line.split()[-1].lstrip('#')
+            if len(hex_col) == 6:
+                return _rgb_to_ansi(
+                    int(hex_col[0:2], 16),
+                    int(hex_col[2:4], 16),
+                    int(hex_col[4:6], 16),
+                )
+    return '\033[36m'  # cyan fallback
+
+def color_strip():
+    normal = ''.join(f'\033[4{i}m   ' for i in range(8)) + RST
+    bright = ''.join(f'\033[10{i}m   ' for i in range(8)) + RST
+    return [normal, bright]
 
 # info collectors
 
@@ -106,29 +149,6 @@ def get_os():
         return f'Windows {platform.release()} (build {platform.version()})'
     return f'{_SYS} {platform.release()}'
 
-def get_host_model():
-    if _SYS == 'Linux':
-        for path in (
-            '/sys/devices/virtual/dmi/id/product_name',
-            '/sys/devices/virtual/dmi/id/board_name',
-        ):
-            try:
-                with open(path) as f:
-                    val = f.read().strip()
-                if val and val not in _DMI_SKIP:
-                    return val
-            except OSError:
-                pass
-    elif _SYS == 'Darwin':
-        return run('sysctl', '-n', 'hw.model') or None
-    elif _SYS == 'Windows':
-        for line in run('wmic', 'computersystem', 'get', 'model', '/value').splitlines():
-            if '=' in line:
-                val = line.split('=', 1)[1].strip()
-                if val:
-                    return val
-    return None
-
 def get_kernel():
     return platform.version() if _SYS == 'Windows' else platform.release()
 
@@ -145,6 +165,39 @@ def get_uptime():
         return ' '.join(parts)
     return run('uptime', '-p').replace('up ', '') or 'Unknown'
 
+# (label, binary, args, line-filter or None)  — requires Python 3.10+ for match/case
+_PKG_TABLE = {
+    'Darwin': [
+        ('brew',     'brew', ('brew', 'list'),      None),
+        ('macports', 'port', ('port', 'installed'), lambda l: l.startswith('  ')),
+    ],
+    'Windows': [
+        ('winget', 'winget', ('winget', 'list'),
+            lambda l: l.strip() and not l.startswith('-') and not l.lower().startswith('name')),
+        ('choco',  'choco',  ('choco', 'list', '--local-only'),
+            lambda l: l.strip() and 'packages installed' not in l),
+        ('scoop',  'scoop',  ('scoop', 'list'),
+            lambda l: l.strip() and not l.startswith('---') and not l.lower().startswith('name')),
+    ],
+    'Linux': [
+        ('pacman',   'pacman',     ('pacman', '-Qq'),                            None),
+        ('dpkg',     'dpkg-query', ('dpkg-query', '-f', '${Package}\n', '-W'),  None),
+        ('rpm',      'rpm',        ('rpm', '-qa', '--queryformat', '%{NAME}\n'), None),
+        ('xbps',     'xbps-query', ('xbps-query', '-l'),                         None),
+        ('apk',      'apk',        ('apk', 'list', '--installed'),               None),
+        ('eopkg',    'eopkg',      ('eopkg', 'list-installed', '-q'),            None),
+        ('guix',     'guix',       ('guix', 'package', '--list-installed'),      None),
+        ('pkg_info', 'pkg_info',   ('pkg_info',),                                None),
+        ('pkg',      'pkg',        ('pkg', 'query', '%n'),                       None),
+        ('brew',     'brew',       ('brew', 'list'),                             None),
+    ],
+    '_any': [
+        ('nix',     'nix-env',  ('nix-env', '-q'),                               None),
+        ('snap',    'snap',     ('snap', 'list'),    lambda l: not l.lower().startswith('name')),
+        ('flatpak', 'flatpak',  ('flatpak', 'list', '--app', '--columns=name'),  None),
+    ],
+}
+
 def get_packages():
     counts = []
 
@@ -152,59 +205,27 @@ def get_packages():
         if lines:
             counts.append(f'{len(lines)} ({label})')
 
-    if _SYS == 'Darwin':
-        if has('brew'):
-            add('brew', cmd_lines('brew', 'list'))
-        if has('port'):
-            add('macports', [line for line in cmd_lines('port', 'installed') if line.startswith('  ')])
+    def process(entries):
+        for label, binary, args, filt in entries:
+            if has(binary):
+                lines = cmd_lines(*args)
+                add(label, [l for l in lines if filt(l)] if filt else lines)
 
-    elif _SYS == 'Windows':
-        if has('winget'):
-            add('winget', [line for line in cmd_lines('winget', 'list')
-                           if line.strip() and not line.startswith('-') and not line.lower().startswith('name')])
-        if has('choco'):
-            add('choco', [line for line in cmd_lines('choco', 'list', '--local-only')
-                          if line.strip() and 'packages installed' not in line])
-        if has('scoop'):
-            add('scoop', [line for line in cmd_lines('scoop', 'list')
-                          if line.strip() and not line.startswith('---') and not line.lower().startswith('name')])
+    match _SYS:
+        case 'Darwin':
+            process(_PKG_TABLE['Darwin'])
+        case 'Windows':
+            process(_PKG_TABLE['Windows'])
+        case _:  # Linux / BSD — portage and kiss are path-based, not command-based
+            portage = glob.glob('/var/db/pkg/*/*')
+            if portage:
+                add('portage', portage)
+            kiss_db = '/var/db/kiss/installed'
+            if os.path.isdir(kiss_db):
+                add('kiss', [e for e in os.listdir(kiss_db) if os.path.isdir(f'{kiss_db}/{e}')])
+            process(_PKG_TABLE['Linux'])
 
-    else:  # Linux / BSD
-        portage = glob.glob('/var/db/pkg/*/*')
-        if portage:
-            add('portage', portage)
-        if has('pacman'):
-            add('pacman', cmd_lines('pacman', '-Qq'))
-        if has('dpkg-query'):
-            add('dpkg', cmd_lines('dpkg-query', '-f', '${Package}\n', '-W'))
-        if has('rpm'):
-            add('rpm', cmd_lines('rpm', '-qa', '--queryformat', '%{NAME}\n'))
-        if has('xbps-query'):
-            add('xbps', cmd_lines('xbps-query', '-l'))
-        if has('apk'):
-            add('apk', cmd_lines('apk', 'list', '--installed'))
-        if has('eopkg'):
-            add('eopkg', cmd_lines('eopkg', 'list-installed', '-q'))
-        if has('guix'):
-            add('guix', cmd_lines('guix', 'package', '--list-installed'))
-        kiss_db = '/var/db/kiss/installed'
-        if os.path.isdir(kiss_db):
-            add('kiss', [entry for entry in os.listdir(kiss_db) if os.path.isdir(f'{kiss_db}/{entry}')])
-        if has('pkg_info'):
-            add('pkg_info', cmd_lines('pkg_info'))
-        if has('pkg'):
-            add('pkg', cmd_lines('pkg', 'query', '%n'))
-        if has('brew'):
-            add('brew', cmd_lines('brew', 'list'))
-
-    # Additive on any platform
-    if has('nix-env'):
-        add('nix', cmd_lines('nix-env', '-q'))
-    if has('snap'):
-        add('snap', [line for line in cmd_lines('snap', 'list') if not line.lower().startswith('name')])
-    if has('flatpak'):
-        add('flatpak', cmd_lines('flatpak', 'list', '--app', '--columns=name'))
-
+    process(_PKG_TABLE['_any'])
     return ', '.join(counts) or 'Unknown'
 
 def get_shell():
@@ -318,15 +339,32 @@ def get_disk():
         return f'{parts[2]} / {parts[1]} ({parts[4]})'
     return 'Unknown'
 
+# install
+
+def install():
+    dest = os.path.expanduser('~/.local/bin/meowfetch')
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    shutil.copy2(os.path.realpath(__file__), dest)
+    os.chmod(dest, os.stat(dest).st_mode | 0o111)
+    print(f'installed → {dest}')
+    if not _PSUTIL:
+        ans = input('install psutil for richer CPU/RAM/disk info? [Y/n] ').strip().lower()
+        if ans in ('', 'y', 'yes'):
+            subprocess.run([sys.executable, '-m', 'pip', 'install', '--user', 'psutil'])
+    local_bin = os.path.expanduser('~/.local/bin')
+    if local_bin not in os.environ.get('PATH', '').split(':'):
+        print(f'\nadd {local_bin} to your PATH:')
+        print(f'  echo \'export PATH="$HOME/.local/bin:$PATH"\' >> ~/.bashrc')
+
 # main
 
 def main():
-    user = get_user()
-    host = get_hostname()
-    cat  = random.choice(CATS)
+    user   = get_user()
+    host   = get_hostname()
+    cat    = random.choice(CATS)
+    accent = detect_accent()
 
     collectors = {
-        'Host':     get_host_model,
         'OS':       get_os,
         'Kernel':   get_kernel,
         'Uptime':   get_uptime,
@@ -344,16 +382,16 @@ def main():
     results = {label: future.result() for label, future in futures.items()}
 
     rows = [
-        f'{BOLD}{user}{RST}@{BOLD}{host}{RST}',
-        '─' * (len(user) + len(host) + 1),
+        f'{BOLD}{accent}{user}{RST}@{BOLD}{accent}{host}{RST}',
+        f'{accent}{"─" * (len(user) + len(host) + 1)}{RST}',
     ]
     for label, val in results.items():
         if val:
-            rows.append(f'{BOLD}{label}{RST}: {val}')
-    rows += ['', greyscale_strip()]
+            rows.append(f'{BOLD}{accent}{label}{RST}: {val}')
+    rows += [''] + color_strip()
 
     cat_w    = max(len(line) for line in cat)
-    cat_rows = [f'{BOLD}{line.ljust(cat_w)}{RST}' for line in cat]
+    cat_rows = [f'{BOLD}{accent}{line.ljust(cat_w)}{RST}' for line in cat]
 
     n = max(len(cat_rows), len(rows))
     cat_rows += [' ' * cat_w] * (n - len(cat_rows))
@@ -365,4 +403,7 @@ def main():
     print()
 
 if __name__ == '__main__':
-    main()
+    if '--install' in sys.argv:
+        install()
+    else:
+        main()
