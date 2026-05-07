@@ -26,7 +26,7 @@ installation
 one-liner — no cloning needed:
 
 ```bash
-curl -o ~/.local/bin/meowfetch https://codeberg.org/anyasretro/meowfetch/raw/branch/main/meowfetch.py && chmod +x ~/.local/bin/meowfetch
+mkdir -p ~/.local/bin && curl -o ~/.local/bin/meowfetch https://codeberg.org/anyasretro/meowfetch/raw/branch/main/meowfetch.py && chmod +x ~/.local/bin/meowfetch
 ```
 
 once installed, just run:
@@ -35,9 +35,13 @@ once installed, just run:
 meowfetch
 ```
 
-if `~/.local/bin` isn't in your PATH yet:
+if `~/.local/bin` isn't in your PATH yet, add this to your shell config and restart your terminal:
 
 ```bash
+# zsh (macOS default, ~/.zshrc)
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
+
+# bash (Linux default, ~/.bashrc)
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
 ```
 
@@ -52,4 +56,4 @@ cd meowfetch
 python3 meowfetch.py --install
 ```
 
-the `--install` flag will copy the script to `~/.local/bin/meowfetch` and offer to install `psutil`.
+the `--install` flag will copy the script to `~/.local/bin/meowfetch`.
