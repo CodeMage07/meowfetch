@@ -14,9 +14,6 @@ what it shows
 - GPU
 - RAM and disk usage with a little progress bar
 - shell, terminal, installed packages
-- a colour palette strip that matches your terminal theme
-
-colours and accent are picked up automatically from your desktop environment (GNOME, KDE, or Xresources).
 
 ---
 requirements
