@@ -24,19 +24,17 @@ requirements
 ---
 installation
 
-clone the repo and run the installer:
+one-liner — no cloning needed:
 
 ```bash
-git clone https://codeberg.org/anyasretro/meowfetch
-cd meowfetch
-python3 meowfetch.py --install
+curl -o ~/.local/bin/meowfetch https://codeberg.org/anyasretro/meowfetch/raw/branch/main/meowfetch.py && chmod +x ~/.local/bin/meowfetch
 ```
 
-that's it. the installer will:
+then optionally install `psutil` for richer CPU/RAM/disk info:
 
-- copy the script to `~/.local/bin/meowfetch`
-- offer to install `psutil` via pip
-- let you know if `~/.local/bin` needs to be added to your PATH
+```bash
+pip install --user psutil
+```
 
 once installed, just run:
 
@@ -44,19 +42,21 @@ once installed, just run:
 meowfetch
 ```
 
----
-manual install
-
-if you'd rather do it yourself:
-
-```bash
-pip install --user psutil
-chmod +x meowfetch.py
-cp meowfetch.py ~/.local/bin/meowfetch
-```
-
-make sure `~/.local/bin` is in your PATH:
+if `~/.local/bin` isn't in your PATH yet:
 
 ```bash
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
 ```
+
+---
+manual install
+
+if you'd rather clone the repo:
+
+```bash
+git clone https://codeberg.org/anyasretro/meowfetch
+cd meowfetch
+python3 meowfetch.py --install
+```
+
+the `--install` flag will copy the script to `~/.local/bin/meowfetch` and offer to install `psutil`.
