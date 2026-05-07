@@ -4,7 +4,7 @@ Hi, this is an experimental project I have been working on with an agentic codin
 
 Meowfetch is a fetch utility with a pawesome twist! When ran it will display one of five cats, along side system information.
 
-![preview](preview.png)
+![preview](Screenshot_20260507_153129.png)
 
 ---
 what it shows
