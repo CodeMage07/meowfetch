@@ -378,15 +378,30 @@ def get_disk():
 # install
 
 def install():
-    dest = os.path.expanduser('~/.local/bin/meowfetch')
-    os.makedirs(os.path.dirname(dest), exist_ok=True)
-    shutil.copy2(os.path.realpath(__file__), dest)
-    os.chmod(dest, os.stat(dest).st_mode | 0o111)
-    print(f'installed → {dest}')
     local_bin = os.path.expanduser('~/.local/bin')
-    if local_bin not in os.environ.get('PATH', '').split(':'):
-        print(f'\nadd {local_bin} to your PATH:')
-        print(f'  echo \'export PATH="$HOME/.local/bin:$PATH"\' >> ~/.bashrc')
+    os.makedirs(local_bin, exist_ok=True)
+
+    if _SYS == 'Windows':
+        dest = os.path.join(local_bin, 'meowfetch.py')
+        shutil.copy2(os.path.realpath(__file__), dest)
+        bat = os.path.join(local_bin, 'meowfetch.bat')
+        with open(bat, 'w') as f:
+            f.write('@echo off\npython "%~dp0meowfetch.py" %*\n')
+        print(f'installed → {dest}')
+        path_entries = [p.lower() for p in os.environ.get('PATH', '').split(';')]
+        if local_bin.lower() not in path_entries:
+            print(f'\nadd {local_bin} to your PATH (run in PowerShell):')
+            print(f'  [Environment]::SetEnvironmentVariable("Path", $env:Path + ";{local_bin}", "User")')
+    else:
+        dest = os.path.join(local_bin, 'meowfetch')
+        shutil.copy2(os.path.realpath(__file__), dest)
+        os.chmod(dest, os.stat(dest).st_mode | 0o111)
+        print(f'installed → {dest}')
+        if local_bin not in os.environ.get('PATH', '').split(':'):
+            shell = os.environ.get('SHELL', '')
+            rc = '~/.zshrc' if 'zsh' in shell else '~/.bashrc'
+            print(f'\nadd to PATH:')
+            print(f'  echo \'export PATH="$HOME/.local/bin:$PATH"\' >> {rc}')
 
 # main
 
