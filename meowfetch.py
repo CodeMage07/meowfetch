@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Meowfetch — a fetch script with a pawesome twist"""
 
-import glob, os, platform, random, re, shutil, socket, subprocess, sys, time
+import argparse, glob, os, platform, random, re, shutil, socket, subprocess, sys, time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 
@@ -90,53 +90,14 @@ def bar(pct, width=10):
     filled = round(width * pct / 100)
     return f'[{"█" * filled}{"░" * (width - filled)}]'
 
-def _rgb_to_ansi(r, g, b):
-    mx, mn = max(r, g, b), min(r, g, b)
-    if mx == 0 or mx - mn < 30:
-        return '\033[36m'
-    if mx == r:
-        return '\033[35m' if b > g else '\033[31m'
-    if mx == g:
-        return '\033[36m' if b > r * 0.5 else '\033[32m'
-    return '\033[34m'
-
-_GNOME_ACCENT = {
-    'blue': '\033[34m', 'teal': '\033[36m', 'green': '\033[32m',
-    'yellow': '\033[33m', 'orange': '\033[33m', 'red': '\033[31m',
-    'pink': '\033[35m', 'purple': '\033[35m', 'slate': '\033[36m',
-    'bark': '\033[33m', 'sage': '\033[32m', 'olive': '\033[33m',
-    'viridian': '\033[36m',
+_COLOURS = {
+    'red':     '\033[31m',
+    'green':   '\033[32m',
+    'yellow':  '\033[33m',
+    'blue':    '\033[34m',
+    'magenta': '\033[35m',
+    'cyan':    '\033[36m',
 }
-
-def detect_accent():
-    # GNOME 42+
-    name = run('gsettings', 'get', 'org.gnome.desktop.interface', 'accent-color').strip("'")
-    if name in _GNOME_ACCENT:
-        return _GNOME_ACCENT[name]
-    # KDE Plasma — ForegroundActive in Colors:Button is the accent colour
-    try:
-        with open(os.path.expanduser('~/.config/kdeglobals')) as f:
-            section = ''
-            for line in f:
-                line = line.strip()
-                if line.startswith('['):
-                    section = line
-                elif section == '[Colors:Button]' and line.startswith('ForegroundActive='):
-                    r, g, b = (int(x) for x in line.split('=', 1)[1].split(',')[:3])
-                    return _rgb_to_ansi(r, g, b)
-    except OSError:
-        pass
-    # Xresources color4 (accent in most terminal themes)
-    for line in cmd_lines('xrdb', '-query'):
-        if '*.color4:' in line or '*color4:' in line:
-            hex_col = line.split()[-1].lstrip('#')
-            if len(hex_col) == 6:
-                return _rgb_to_ansi(
-                    int(hex_col[0:2], 16),
-                    int(hex_col[2:4], 16),
-                    int(hex_col[4:6], 16),
-                )
-    return '\033[36m'  # cyan fallback
 
 def color_strip():
     normal = ''.join(f'\033[4{i}m   ' for i in range(8)) + RST
@@ -376,11 +337,11 @@ def install():
 
 # main
 
-def main():
+def main(color='cyan'):
     user   = get_user()
     host   = get_hostname()
     cat    = random.choice(CATS)
-    accent = detect_accent()
+    accent = _COLOURS[color]
 
     collectors = {
         'OS':       get_os,
@@ -421,7 +382,18 @@ def main():
     print()
 
 if __name__ == '__main__':
-    if '--install' in sys.argv:
+    parser = argparse.ArgumentParser(prog='meowfetch')
+    parser.add_argument(
+        '--color', '-c',
+        choices=_COLOURS,
+        default='cyan',
+        metavar='NAME',
+        help=f'colour scheme ({", ".join(_COLOURS)})',
+    )
+    parser.add_argument('--install', action='store_true', help='install to ~/.local/bin')
+    args = parser.parse_args()
+
+    if args.install:
         install()
     else:
-        main()
+        main(args.color)
