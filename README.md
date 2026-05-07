@@ -1,4 +1,4 @@
-meowfetch
+# meowfetch
 
 a neofetch-inspired system info tool for the terminal, but with an ascii cat :3
 
@@ -12,37 +12,52 @@ what it shows
 - GPU
 - RAM and disk usage with a little progress bar
 - shell, terminal, installed packages
-- a colour palette strip at the bottom
+- a colour palette strip that matches your terminal theme
+
+colours and accent are picked up automatically from your desktop environment (GNOME, KDE, or Xresources).
 
 ---
 requirements
 
-- Python 3.6+
-- `psutil` — used for RAM, disk, CPU info. the script still works without it but the info will be less accurate.
+- Python 3.10+
+- `psutil` — optional, but gives richer CPU/RAM/disk info. the install script will offer to add it for you.
 
 ---
-
 installation
 
-clone the repo and install the dependency:
+clone the repo and run the installer:
 
 ```bash
 git clone https://codeberg.org/anyasretro/meowfetch
 cd meowfetch
-pip install psutil
+python3 meowfetch.py --install
 ```
 
-then just run it:
+that's it. the installer will:
+
+- copy the script to `~/.local/bin/meowfetch`
+- offer to install `psutil` via pip
+- let you know if `~/.local/bin` needs to be added to your PATH
+
+once installed, just run:
 
 ```bash
-python3 meowfetch.py
+meowfetch
 ```
 
-if you want to call it like a command without typing `python3` every time, you can make it executable and drop it somewhere in your PATH:
+---
+manual install
+
+if you'd rather do it yourself:
 
 ```bash
+pip install --user psutil
 chmod +x meowfetch.py
-sudo cp meowfetch.py /usr/local/bin/meowfetch
+cp meowfetch.py ~/.local/bin/meowfetch
 ```
 
-after that you can just type `meowfetch` anywhere.
+make sure `~/.local/bin` is in your PATH:
+
+```bash
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+```
