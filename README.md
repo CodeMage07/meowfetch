@@ -23,34 +23,50 @@ requirements
 ---
 installation
 
-clone the repo and run the installer:
+## Linux / macOS
 
 ```bash
-git clone https://codeberg.org/anyasretro/meowfetch
-cd meowfetch
-python3 meowfetch.py --install   # use 'python' on Windows
-```
-
-the installer will copy the script to `~/.local/bin/meowfetch` and let you know if that directory needs to be added to your PATH.
-
-once installed, just run:
-
-```bash
-meowfetch
+mkdir -p ~/.local/bin && curl -fLo ~/.local/bin/meowfetch https://codeberg.org/anyasretro/meowfetch/raw/branch/main/meowfetch.py && chmod +x ~/.local/bin/meowfetch
 ```
 
 if `~/.local/bin` isn't in your PATH yet:
 
 ```bash
-# zsh (macOS default)
+# zsh (macOS)
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
 
-# bash (Linux default)
+# bash (Linux)
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
 ```
 
-on Windows, run this in PowerShell:
+## Windows (PowerShell)
+
+```powershell
+$bin = "$HOME\.local\bin"
+New-Item -ItemType Directory -Force $bin | Out-Null
+Invoke-WebRequest https://codeberg.org/anyasretro/meowfetch/raw/branch/main/meowfetch.py -OutFile "$bin\meowfetch.py" -ErrorAction Stop
+'@echo off' + "`npython `"%~dp0meowfetch.py`" %*" | Set-Content "$bin\meowfetch.bat"
+```
+
+if `~\.local\bin` isn't in your PATH yet (run in PowerShell):
 
 ```powershell
 [Environment]::SetEnvironmentVariable("Path", $env:Path + ";$HOME\.local\bin", "User")
+```
+
+then restart your terminal and run:
+
+```bash
+meowfetch
+```
+
+---
+manual install
+
+clone the repo and run the installer — it handles PATH detection automatically:
+
+```bash
+git clone https://codeberg.org/anyasretro/meowfetch
+cd meowfetch
+python3 meowfetch.py --install   # use 'python' on Windows
 ```
