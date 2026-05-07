@@ -1,6 +1,8 @@
 # meowfetch
 
-a neofetch-inspired system info tool for the terminal, but with an ascii cat :3
+Hi, this is an experimental project I have been working on with an agentic coding agent as a part of a module in one of my classes; this project is not a serious one, nor should it be taken seriously.
+
+Meowfetch is a fetch utility with a pawesome twist! When ran it will display one of four cats, along side system information. 
 
 ![preview](preview.png)
 
