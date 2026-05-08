@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "meowfetch"
+version = "1.0.0"
+description = "A fetch script with a pawesome twist"
+requires-python = ">=3.10"
+
+[project.scripts]
+meowfetch = "meowfetch.__main__:cli"
