@@ -335,7 +335,7 @@ def get_ram():
             avail = info.get('MemAvailable') or info.get('MemFree', 0)
             used  = total - avail
             return f'{used/2**20:.1f}G / {total/2**20:.1f}G  {bar(used/total*100)}'
-        except (OSError, KeyError):
+        except (OSError, KeyError, ValueError, ZeroDivisionError):
             pass
     if _SYS == 'Darwin':
         try:
@@ -369,7 +369,7 @@ def get_disk():
     try:
         d = shutil.disk_usage(root)
         return f'{d.used/2**30:.1f}G / {d.total/2**30:.1f}G  {bar(d.used/d.total*100)}'
-    except OSError:
+    except (OSError, ZeroDivisionError):
         return 'Unknown'
 
 # install
