@@ -53,15 +53,33 @@ def color_strip():
     return [normal, bright]
 
 def install():
-    import subprocess as sp, sys
+    import sys
     project_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-    result = sp.run([sys.executable, '-m', 'pip', 'install', '--user', project_dir], check=False)
-    if result.returncode == 0:
-        print('Installed successfully. Run: meowfetch')
-        local_bin = os.path.expanduser('~/.local/bin')
-        if _SYS != 'Windows' and local_bin not in os.environ.get('PATH', '').split(':'):
-            shell = os.environ.get('SHELL', '')
-            rc = '~/.zshrc' if 'zsh' in shell else '~/.bashrc'
-            print(f'\nadd to PATH:\n  echo \'export PATH="$HOME/.local/bin:$PATH"\' >> {rc}')
+    local_bin   = os.path.expanduser('~/.local/bin')
+    os.makedirs(local_bin, exist_ok=True)
+
+    if _SYS == 'Windows':
+        dest = os.path.join(local_bin, 'meowfetch.bat')
+        with open(dest, 'w') as f:
+            f.write(
+                f'@echo off\n'
+                f'"{sys.executable}" -c "'
+                f'import sys; sys.path.insert(0, r\'{project_dir}\'); '
+                f'from meowfetch.__main__ import cli; cli()" %*\n'
+            )
     else:
-        print('Installation failed. Try: pip install --user .')
+        dest = os.path.join(local_bin, 'meowfetch')
+        with open(dest, 'w') as f:
+            f.write(
+                f'#!/bin/sh\n'
+                f'exec python3 -c "'
+                f'import sys; sys.path.insert(0, \'{project_dir}\'); '
+                f'from meowfetch.__main__ import cli; cli()" "$@"\n'
+            )
+        os.chmod(dest, os.stat(dest).st_mode | 0o111)
+
+    print(f'installed → {dest}')
+    if _SYS != 'Windows' and local_bin not in os.environ.get('PATH', '').split(':'):
+        shell = os.environ.get('SHELL', '')
+        rc = '~/.zshrc' if 'zsh' in shell else '~/.bashrc'
+        print(f'\nadd to PATH:\n  echo \'export PATH="$HOME/.local/bin:$PATH"\' >> {rc}')
