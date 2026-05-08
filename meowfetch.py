@@ -189,31 +189,34 @@ _PKG_TABLE = {
 def get_packages():
     counts = []
 
-    def add(label, lines):
-        if lines:
-            counts.append(f'{len(lines)} ({label})')
+    def query(label, binary, args, filt):
+        if not has(binary):
+            return None
+        lines = cmd_lines(*args)
+        filtered = [l for l in lines if filt(l)] if filt else lines
+        return f'{len(filtered)} ({label})' if filtered else None
 
-    def process(entries):
-        for label, binary, args, filt in entries:
-            if has(binary):
-                lines = cmd_lines(*args)
-                add(label, [l for l in lines if filt(l)] if filt else lines)
-
+    entries = []
     match _SYS:  # requires Python 3.10+
         case 'Darwin':
-            process(_PKG_TABLE['Darwin'])
+            entries += _PKG_TABLE['Darwin']
         case 'Windows':
-            process(_PKG_TABLE['Windows'])
+            entries += _PKG_TABLE['Windows']
         case _:  # Linux / BSD — portage and kiss are path-based, not command-based
             portage = glob.glob('/var/db/pkg/*/*')
             if portage:
-                add('portage', portage)
+                counts.append(f'{len(portage)} (portage)')
             kiss_db = '/var/db/kiss/installed'
             if os.path.isdir(kiss_db):
-                add('kiss', [e for e in os.listdir(kiss_db) if os.path.isdir(f'{kiss_db}/{e}')])
-            process(_PKG_TABLE['Linux'])
+                kiss_pkgs = [e for e in os.listdir(kiss_db) if os.path.isdir(f'{kiss_db}/{e}')]
+                if kiss_pkgs:
+                    counts.append(f'{len(kiss_pkgs)} (kiss)')
+            entries += _PKG_TABLE['Linux']
+    entries += _PKG_TABLE['_any']
 
-    process(_PKG_TABLE['_any'])
+    with ThreadPoolExecutor() as pool:
+        counts += filter(None, pool.map(lambda e: query(*e), entries))
+
     return ', '.join(counts) or 'Unknown'
 
 def get_shell():
@@ -298,9 +301,10 @@ def get_cpu():
     return f'{name}{freq_str}{ct}'
 
 def get_gpu():
-    out = run('nvidia-smi', '--query-gpu=name', '--format=csv,noheader,nounits')
-    if out:
-        return out.splitlines()[0].strip()
+    if has('nvidia-smi'):
+        out = run('nvidia-smi', '--query-gpu=name', '--format=csv,noheader,nounits')
+        if out:
+            return out.splitlines()[0].strip()
     if _SYS == 'Darwin':
         for line in run('system_profiler', 'SPDisplaysDataType').splitlines():
             if 'Chipset Model' in line or 'Chip Model' in line:
