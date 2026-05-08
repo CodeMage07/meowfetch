@@ -1,6 +1,6 @@
 # meowfetch
 
-Hi, this is an experimental project I have been working on with an agentic coding agent as a part of a module in one of my classes; this project is not a serious one, nor should it be taken seriously.
+Hi, this is an experimental python project I have been working on with an agentic coding agent as a part of a module in one of my classes; this project is not a serious one, nor should it be taken seriously.
 
 Meowfetch is a fetch utility with a pawesome twist! When ran it will display one of several cats, along side system information.
 
