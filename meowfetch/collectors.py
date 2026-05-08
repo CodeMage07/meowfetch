@@ -270,6 +270,6 @@ def get_disk():
     root = 'C:\\' if _SYS == 'Windows' else '/'
     try:
         d = _shutil.disk_usage(root)
-        return f'{d.used/2**30:.1f}G / {d.total/2**30:.1f}G  {bar(d.used/d.total*100)}'
+        return f'{d.used/2**30:.1f}G / {d.total/2**30:.1f}G'
     except (OSError, ZeroDivisionError):
         return 'Unknown'
