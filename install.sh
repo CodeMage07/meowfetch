@@ -5,7 +5,7 @@ DEST="$HOME/.local/share/meowfetch"
 BIN="$HOME/.local/bin"
 
 if [ -d "$DEST/.git" ]; then
-  git -C "$DEST" pull -q
+  git -C "$DEST" pull -q --ff-only
 else
   git clone -q https://github.com/praisetux/meowfetch "$DEST"
 fi
