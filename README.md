@@ -27,7 +27,7 @@ installation
 ## Linux / macOS
 
 ```bash
-sh <(curl -fsSL https://codeberg.org/anyasretro/meowfetch/raw/branch/main/install.sh)
+sh <(curl -fsSL https://raw.githubusercontent.com/CodeMage07/meowfetch/main/install.sh)
 ```
 
 if `~/.local/bin` isn't in your PATH yet:
@@ -43,7 +43,7 @@ echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
 ## Windows (PowerShell)
 
 ```powershell
-git clone https://codeberg.org/anyasretro/meowfetch "$HOME\.local\share\meowfetch"
+git clone https://github.com/CodeMage07/meowfetch "$HOME\.local\share\meowfetch"
 python "$HOME\.local\share\meowfetch\meowfetch.py" --install
 ```
 
@@ -63,7 +63,7 @@ meowfetch
 manual install
 
 ```bash
-git clone https://codeberg.org/anyasretro/meowfetch
+git clone https://github.com/CodeMage07/meowfetch
 cd meowfetch
 python3 meowfetch.py --install   # use 'python' on Windows
 ```

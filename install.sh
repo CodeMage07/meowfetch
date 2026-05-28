@@ -7,7 +7,7 @@ BIN="$HOME/.local/bin"
 if [ -d "$DEST/.git" ]; then
   git -C "$DEST" pull -q
 else
-  git clone -q https://codeberg.org/anyasretro/meowfetch "$DEST"
+  git clone -q https://github.com/CodeMage07/meowfetch "$DEST"
 fi
 
 mkdir -p "$BIN"
