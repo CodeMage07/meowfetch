@@ -5,7 +5,9 @@ DEST="$HOME/.local/share/meowfetch"
 BIN="$HOME/.local/bin"
 
 if [ -d "$DEST/.git" ]; then
-  git -C "$DEST" pull -q --ff-only
+  git -C "$DEST" remote set-url origin https://github.com/praisetux/meowfetch
+  git -C "$DEST" fetch -q origin
+  git -C "$DEST" reset -q --hard origin/main
 else
   git clone -q https://github.com/praisetux/meowfetch "$DEST"
 fi
