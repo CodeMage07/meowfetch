@@ -1,7 +1,8 @@
-import os, platform, shutil, subprocess
+import json, os, platform, shutil, subprocess
 from datetime import timedelta
 
-_SYS = platform.system()
+_SYS      = platform.system()
+_DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
 
 if _SYS == 'Windows':
     os.system('')
@@ -9,14 +10,11 @@ if _SYS == 'Windows':
 RST  = '\033[0m'
 BOLD = '\033[1m'
 
-_COLOURS = {
-    'red':     '\033[31m',
-    'green':   '\033[32m',
-    'yellow':  '\033[33m',
-    'blue':    '\033[34m',
-    'magenta': '\033[35m',
-    'cyan':    '\033[36m',
-}
+def _load_json(name):
+    with open(os.path.join(_DATA_DIR, name)) as f:
+        return json.load(f)
+
+_COLOURS = _load_json('colours.json')
 
 
 def run(*cmd):
@@ -51,6 +49,24 @@ def color_strip():
     normal = ''.join(f'\033[4{i}m   ' for i in range(8)) + RST
     bright = ''.join(f'\033[10{i}m   ' for i in range(8)) + RST
     return [normal, bright]
+
+_CACHE_FILE = os.path.expanduser('~/.cache/meowfetch/cache.json')
+
+def load_cache():
+    try:
+        with open(_CACHE_FILE) as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError, ValueError):
+        return {}
+
+def save_cache(data):
+    os.makedirs(os.path.dirname(_CACHE_FILE), exist_ok=True)
+    try:
+        with open(_CACHE_FILE, 'w') as f:
+            json.dump(data, f)
+    except OSError:
+        pass
+
 
 def install():
     import sys

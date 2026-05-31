@@ -69,6 +69,20 @@ python3 meowfetch.py --install   # use 'python' on Windows
 ```
 
 ---
+colours
+
+use `--color` / `-c` to set the accent colour:
+
+```bash
+meowfetch --color pink
+meowfetch -c bright_cyan
+```
+
+available: `red`, `green`, `yellow`, `blue`, `magenta`, `cyan`, `white`, `pink`, `bright_red`, `bright_green`, `bright_blue`, `bright_cyan`
+
+default is `cyan`.
+
+---
 updating
 
 re-run the install command and it will pull the latest changes automatically.

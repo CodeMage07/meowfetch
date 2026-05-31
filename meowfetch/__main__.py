@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Meowfetch — a fetch script with a pawesome twist"""
 
-import argparse, random
+import argparse, random, time
 from concurrent.futures import ThreadPoolExecutor
 
-from .utils import BOLD, RST, _COLOURS, color_strip, install
+from .utils import BOLD, RST, _COLOURS, color_strip, install, load_cache, save_cache, _load_json
 from .collectors import (
     get_user, get_hostname,
     get_os, get_kernel, get_uptime,
@@ -14,53 +14,19 @@ from .collectors import (
     get_ram, get_disk,
 )
 
-CATS = [
-    [
-        r"   /\_____/\   ",
-        r"  /  o   o  \  ",
-        r" ( ==  ^  == ) ",
-        r"  )  ~~~~~  (  ",
-        r" (           ) ",
-        r"( (  )   (  ) )",
-        r" (__(__)_(__) )",
-    ],
-    [
-        r"   /\_____/\   ",
-        r"  /  -   -  \  ",
-        r" ( ==  ^  == ) ",
-        r"  )  ~~~~~  (  ",
-        r" (  z Z z   ) ",
-        r"( (  )   (  ) )",
-        r" (__(__)_(__) )",
-    ],
-    [
-        r"   /\_____/\   ",
-        r"  /  o   o  \  ",
-        r" ( ==  ^  == ) ",
-        r"  )  ~~~u~  (  ",
-        r" (           ) ",
-        r"( (  )   (  ) )",
-        r" (__(__)_(__) )",
-    ],
-    [
-        r"   /\_____/\   ",
-        r"  /  -   -  \  ",
-        r" ( ==  ^  == ) ",
-        r"  )  ~~~~~  (  ",
-        r" (~~~~~~~~~~~) ",
-        r"( u  z z z  u )",
-        r" ~~~~~~~~~~~~~ ",
-    ],
-    [
-        r"   /\_____/\   ",
-        r"  /  o   o  \  ",
-        r" ( ==  ^  == ) ",
-        r"  \  ~~~~~  /  ",
-        r"|_____________|",
-        r"|             |",
-        r"|_____________|",
-    ],
-]
+CATS = _load_json('cats.json')
+
+
+_CACHE_TTL = {
+    'OS':       86400,   # 24h — static between reinstalls
+    'Kernel':   86400,   # 24h — static between reboots
+    'Shell':    86400,   # 24h — rarely changes
+    'CPU':      86400,   # 24h — static hardware
+    'GPU':      86400,   # 24h — static hardware
+    'Packages': 300,     # 5min — slow to collect, changes infrequently
+    'Disk (/)': 60,      # 1min — changes occasionally
+    # Uptime, RAM, Terminal intentionally absent — always collected fresh
+}
 
 
 def main(color='cyan'):
@@ -82,9 +48,28 @@ def main(color='cyan'):
         'Disk (/)': get_disk,
     }
 
-    with ThreadPoolExecutor() as pool:
-        futures = {label: pool.submit(fn) for label, fn in collectors.items()}
-    results = {label: future.result() for label, future in futures.items()}
+    now   = time.time()
+    cache = load_cache()
+
+    results  = {}
+    to_fetch = {}
+    for label, fn in collectors.items():
+        ttl   = _CACHE_TTL.get(label, 0)
+        entry = cache.get(label)
+        if ttl > 0 and entry and now - entry['ts'] < ttl:
+            results[label] = entry['val']
+        else:
+            to_fetch[label] = fn
+
+    if to_fetch:
+        with ThreadPoolExecutor() as pool:
+            futures = {label: pool.submit(fn) for label, fn in to_fetch.items()}
+        fresh = {label: f.result() for label, f in futures.items()}
+        results.update(fresh)
+        for label, val in fresh.items():
+            if _CACHE_TTL.get(label, 0) > 0:
+                cache[label] = {'val': val, 'ts': now}
+        save_cache(cache)
 
     rows = [
         f'{BOLD}{accent}{user}{RST}@{BOLD}{accent}{host}{RST}',

@@ -1,41 +1,29 @@
 import glob, os, platform, re, time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
-from .utils import run, has, cmd_lines, bar, fmt_secs, _SYS
+from .utils import run, has, cmd_lines, bar, fmt_secs, _SYS, _load_json
 
 _VENDOR_TAG = re.compile(r'^(AMD|ATI|NVIDIA|Intel)[/\s]', re.I)
 
-_PKG_TABLE = {
-    'Darwin': [
-        ('brew',     'brew', ('brew', 'list'),      None),
-        ('macports', 'port', ('port', 'installed'), lambda l: l.startswith('  ')),
-    ],
-    'Windows': [
-        ('winget', 'winget', ('winget', 'list'),
-            lambda l: l.strip() and not l.startswith('-') and not l.lower().startswith('name')),
-        ('choco',  'choco',  ('choco', 'list', '--local-only'),
-            lambda l: l.strip() and 'packages installed' not in l),
-        ('scoop',  'scoop',  ('scoop', 'list'),
-            lambda l: l.strip() and not l.startswith('---') and not l.lower().startswith('name')),
-    ],
-    'Linux': [
-        ('pacman',   'pacman',     ('pacman', '-Qq'),                            None),
-        ('dpkg',     'dpkg-query', ('dpkg-query', '-f', '${Package}\n', '-W'),  None),
-        ('rpm',      'rpm',        ('rpm', '-qa', '--queryformat', '%{NAME}\n'), None),
-        ('xbps',     'xbps-query', ('xbps-query', '-l'),                         None),
-        ('apk',      'apk',        ('apk', 'list', '--installed'),               None),
-        ('eopkg',    'eopkg',      ('eopkg', 'list-installed', '-q'),            None),
-        ('guix',     'guix',       ('guix', 'package', '--list-installed'),      None),
-        ('pkg_info', 'pkg_info',   ('pkg_info',),                                None),
-        ('pkg',      'pkg',        ('pkg', 'query', '%n'),                       None),
-        ('brew',     'brew',       ('brew', 'list'),                             None),
-    ],
-    '_any': [
-        ('nix',     'nix-env',  ('nix-env', '-q'),                               None),
-        ('snap',    'snap',     ('snap', 'list'),    lambda l: not l.lower().startswith('name')),
-        ('flatpak', 'flatpak',  ('flatpak', 'list', '--app', '--columns=name'),  None),
-    ],
+_FILTERS = {
+    'indent':      lambda l: l.startswith('  '),
+    'winget':      lambda l: l.strip() and not l.startswith('-') and not l.lower().startswith('name'),
+    'choco':       lambda l: l.strip() and 'packages installed' not in l,
+    'scoop':       lambda l: l.strip() and not l.startswith('---') and not l.lower().startswith('name'),
+    'skip_header': lambda l: not l.lower().startswith('name'),
 }
+
+def _load_pkg_table():
+    raw = _load_json('pkg_table.json')
+    result = {}
+    for key, entries in raw.items():
+        result[key] = [
+            (label, binary, tuple(args), _FILTERS.get(filt) if filt else None)
+            for label, binary, args, filt in entries
+        ]
+    return result
+
+_PKG_TABLE = _load_pkg_table()
 
 
 def get_user():
