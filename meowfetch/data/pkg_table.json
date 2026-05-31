@@ -1,0 +1,28 @@
+{
+  "Darwin": [
+    ["brew",     "brew", ["brew", "list"],      null],
+    ["macports", "port", ["port", "installed"], "indent"]
+  ],
+  "Windows": [
+    ["winget", "winget", ["winget", "list"],                         "winget"],
+    ["choco",  "choco",  ["choco", "list", "--local-only"],          "choco"],
+    ["scoop",  "scoop",  ["scoop", "list"],                          "scoop"]
+  ],
+  "Linux": [
+    ["pacman",   "pacman",     ["pacman", "-Qq"],                                    null],
+    ["dpkg",     "dpkg-query", ["dpkg-query", "-f", "${Package}\n", "-W"],           null],
+    ["rpm",      "rpm",        ["rpm", "-qa", "--queryformat", "%{NAME}\n"],         null],
+    ["xbps",     "xbps-query", ["xbps-query", "-l"],                                 null],
+    ["apk",      "apk",        ["apk", "list", "--installed"],                       null],
+    ["eopkg",    "eopkg",      ["eopkg", "list-installed", "-q"],                    null],
+    ["guix",     "guix",       ["guix", "package", "--list-installed"],              null],
+    ["pkg_info", "pkg_info",   ["pkg_info"],                                         null],
+    ["pkg",      "pkg",        ["pkg", "query", "%n"],                               null],
+    ["brew",     "brew",       ["brew", "list"],                                     null]
+  ],
+  "_any": [
+    ["nix",     "nix-env",  ["nix-env", "-q"],                                    null],
+    ["snap",    "snap",     ["snap", "list"],                                      "skip_header"],
+    ["flatpak", "flatpak",  ["flatpak", "list", "--app", "--columns=name"],        null]
+  ]
+}
