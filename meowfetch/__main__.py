@@ -75,7 +75,8 @@ def main(color='cyan'):
         f'{BOLD}{accent}{user}{RST}@{BOLD}{accent}{host}{RST}',
         f'{accent}{"─" * (len(user) + len(host) + 1)}{RST}',
     ]
-    for label, val in results.items():
+    for label in collectors:
+        val = results.get(label)
         if val:
             rows.append(f'{BOLD}{accent}{label}{RST}: {val}')
     rows += [''] + color_strip()
