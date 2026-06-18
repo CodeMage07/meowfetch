@@ -1,6 +1,3 @@
-# Requirements
-- Python 3.10
-
 # meowfetch
 
 Hi, this is an experimental python project I have been working on with an agentic coding agent as a part of a module in one of my classes; this project is not a serious one, nor should it be taken seriously.
