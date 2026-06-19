@@ -69,6 +69,8 @@ def get_uptime():
         if m:
             boot = datetime.strptime(m.group(1), '%Y%m%d%H%M%S')
             return fmt_secs((datetime.now() - boot).total_seconds())
+    if _SYS == 'Darwin':
+        return run('uptime').split(',')[0].split('up')[-1].strip() or 'Unknown'
     return run('uptime', '-p').replace('up ', '') or 'Unknown'
 
 def get_packages():
@@ -114,7 +116,7 @@ def get_shell():
     if not sh:
         return 'Unknown'
     name = os.path.basename(sh)
-    m    = re.search(r'[\d.]+', run(sh, '--version'))
+    m    = re.search(r'\d[\d.]*', run(sh, '--version'))
     return f'{name} {m.group()}' if m else name
 
 def get_terminal():
@@ -258,6 +260,6 @@ def get_disk():
     root = 'C:\\' if _SYS == 'Windows' else '/'
     try:
         d = _shutil.disk_usage(root)
-        return f'{d.used/2**30:.1f}G / {d.total/2**30:.1f}G'
+        return f'{d.used/2**30:.1f}G / {d.total/2**30:.1f}G  {bar(d.used/d.total*100)}'
     except (OSError, ZeroDivisionError):
         return 'Unknown'

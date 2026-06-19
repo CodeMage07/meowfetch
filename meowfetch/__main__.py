@@ -64,7 +64,7 @@ def main(color='cyan'):
     if to_fetch:
         with ThreadPoolExecutor() as pool:
             futures = {label: pool.submit(fn) for label, fn in to_fetch.items()}
-        fresh = {label: f.result() for label, f in futures.items()}
+            fresh = {label: f.result() for label, f in futures.items()}
         results.update(fresh)
         for label, val in fresh.items():
             if _CACHE_TTL.get(label, 0) > 0:
