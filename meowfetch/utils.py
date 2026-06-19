@@ -88,7 +88,7 @@ def install():
         with open(dest, 'w') as f:
             f.write(
                 f'#!/bin/sh\n'
-                f'exec python3 -c "'
+                f'exec {sys.executable} -c "'
                 f'import sys; sys.path.insert(0, \'{project_dir}\'); '
                 f'from meowfetch.__main__ import cli; cli()" "$@"\n'
             )
