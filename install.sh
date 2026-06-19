@@ -4,6 +4,19 @@ set -e
 DEST="$HOME/.local/share/meowfetch"
 BIN="$HOME/.local/bin"
 
+# Require Python 3.10+ for match/case support
+PYTHON=""
+for candidate in python3.14 python3.13 python3.12 python3.11 python3.10; do
+  if command -v "$candidate" >/dev/null 2>&1; then
+    PYTHON="$candidate"
+    break
+  fi
+done
+if [ -z "$PYTHON" ]; then
+  echo "error: Python 3.10 or newer is required but was not found" >&2
+  exit 1
+fi
+
 if [ -d "$DEST/.git" ]; then
   git -C "$DEST" remote set-url origin https://github.com/CodeMage07/meowfetch
   git -C "$DEST" fetch -q origin
@@ -13,7 +26,7 @@ else
 fi
 
 mkdir -p "$BIN"
-printf '#!/bin/sh\nexec python3 -c "import sys; sys.path.insert(0, '"'"'%s'"'"'); from meowfetch.__main__ import cli; cli()" "$@"\n' "$DEST" > "$BIN/meowfetch"
+printf '#!/bin/sh\nexec %s -c "import sys; sys.path.insert(0, '"'"'%s'"'"'); from meowfetch.__main__ import cli; cli()" "$@"\n' "$PYTHON" "$DEST" > "$BIN/meowfetch"
 chmod +x "$BIN/meowfetch"
 echo "installed → $BIN/meowfetch"
 
