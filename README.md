@@ -34,32 +34,13 @@ echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
 ```
 
-## Windows (PowerShell)
-
-```powershell
-git clone https://github.com/CodeMage07/meowfetch "$HOME\.local\share\meowfetch"
-python "$HOME\.local\share\meowfetch\meowfetch.py" --install
-```
-
-if `~\.local\bin` isn't in your PATH yet (run in PowerShell):
-
-```powershell
-[Environment]::SetEnvironmentVariable("Path", $env:Path + ";$HOME\.local\bin", "User")
-```
-
-then restart your terminal and run:
-
-```bash
-meowfetch
-```
-
 ---
 manual install
 
 ```bash
 git clone https://github.com/CodeMage07/meowfetch
 cd meowfetch
-python3 meowfetch.py --install   # use 'python' on Windows
+python3 meowfetch.py --install
 ```
 
 ---
