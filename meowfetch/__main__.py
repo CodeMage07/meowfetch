@@ -16,15 +16,17 @@ from .collectors import (
 
 CATS = _load_json('cats.json')
 
+_DISK_LABEL = 'Disk (/)'
+
 
 _CACHE_TTL = {
-    'OS':       86400,   # 24h — static between reinstalls
-    'Kernel':   86400,   # 24h — static between reboots
-    'Shell':    86400,   # 24h — rarely changes
-    'CPU':      86400,   # 24h — static hardware
-    'GPU':      86400,   # 24h — static hardware
-    'Packages': 300,     # 5min — slow to collect, changes infrequently
-    'Disk (/)': 60,      # 1min — changes occasionally
+    'OS':        86400,  # 24h — static between reinstalls
+    'Kernel':    86400,  # 24h — static between reboots
+    'Shell':     86400,  # 24h — rarely changes
+    'CPU':       86400,  # 24h — static hardware
+    'GPU':       86400,  # 24h — static hardware
+    'Packages':  300,    # 5min — slow to collect, changes infrequently
+    _DISK_LABEL: 60,     # 1min — changes occasionally
     # Uptime, RAM, Terminal intentionally absent — always collected fresh
 }
 
@@ -36,16 +38,16 @@ def main(color='cyan'):
     accent = _COLOURS[color]
 
     collectors = {
-        'OS':       get_os,
-        'Kernel':   get_kernel,
-        'Uptime':   get_uptime,
-        'Packages': get_packages,
-        'Shell':    get_shell,
-        'Terminal': get_terminal,
-        'CPU':      get_cpu,
-        'GPU':      get_gpu,
-        'RAM':      get_ram,
-        'Disk (/)': get_disk,
+        'OS':        get_os,
+        'Kernel':    get_kernel,
+        'Uptime':    get_uptime,
+        'Packages':  get_packages,
+        'Shell':     get_shell,
+        'Terminal':  get_terminal,
+        'CPU':       get_cpu,
+        'GPU':       get_gpu,
+        'RAM':       get_ram,
+        _DISK_LABEL: get_disk,
     }
 
     now   = time.time()
@@ -56,7 +58,8 @@ def main(color='cyan'):
     for label, fn in collectors.items():
         ttl   = _CACHE_TTL.get(label, 0)
         entry = cache.get(label)
-        if ttl > 0 and entry and now - entry['ts'] < ttl:
+        if ttl > 0 and isinstance(entry, dict) and 'ts' in entry and 'val' in entry \
+                and now - entry['ts'] < ttl:
             results[label] = entry['val']
         else:
             to_fetch[label] = fn
@@ -66,10 +69,15 @@ def main(color='cyan'):
             futures = {label: pool.submit(fn) for label, fn in to_fetch.items()}
             fresh = {label: f.result() for label, f in futures.items()}
         results.update(fresh)
+        dirty = False
         for label, val in fresh.items():
-            if _CACHE_TTL.get(label, 0) > 0:
+            # Don't cache failures/sentinels — a transient '' or 'Unknown'
+            # would otherwise be pinned for the whole TTL (up to 24h).
+            if _CACHE_TTL.get(label, 0) > 0 and val and val != 'Unknown':
                 cache[label] = {'val': val, 'ts': now}
-        save_cache(cache)
+                dirty = True
+        if dirty:
+            save_cache(cache)
 
     rows = [
         f'{BOLD}{accent}{user}{RST}@{BOLD}{accent}{host}{RST}',
@@ -103,7 +111,7 @@ def cli():
         metavar='NAME',
         help=f'colour scheme ({", ".join(_COLOURS)})',
     )
-    parser.add_argument('--install', action='store_true', help='install to ~/.local/bin via pip')
+    parser.add_argument('--install', action='store_true', help='install launcher to ~/.local/bin')
     args = parser.parse_args()
 
     if args.install:
