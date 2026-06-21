@@ -3,11 +3,6 @@
     ["brew",     "brew", ["brew", "list"],      null],
     ["macports", "port", ["port", "installed"], "indent"]
   ],
-  "Windows": [
-    ["winget", "winget", ["winget", "list"],                         "winget"],
-    ["choco",  "choco",  ["choco", "list", "--local-only"],          "choco"],
-    ["scoop",  "scoop",  ["scoop", "list"],                          "scoop"]
-  ],
   "Linux": [
     ["pacman",   "pacman",     ["pacman", "-Qq"],                                    null],
     ["dpkg",     "dpkg-query", ["dpkg-query", "-f", "${Package}\n", "-W"],           null],

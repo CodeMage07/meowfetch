@@ -1,15 +1,11 @@
 import glob, os, platform, re, time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
 from .utils import run, has, cmd_lines, bar, fmt_secs, _SYS, _load_json
 
 _VENDOR_TAG = re.compile(r'^(AMD|ATI|NVIDIA|Intel)[/\s]', re.I)
 
 _FILTERS = {
     'indent':      lambda l: l.startswith('  '),
-    'winget':      lambda l: l.strip() and not l.startswith('-') and not l.lower().startswith('name'),
-    'choco':       lambda l: l.strip() and 'packages installed' not in l,
-    'scoop':       lambda l: l.strip() and not l.startswith('---') and not l.lower().startswith('name'),
     'skip_header': lambda l: not l.lower().startswith('name'),
 }
 
@@ -44,12 +40,10 @@ def get_os():
         name = run('sw_vers', '-productName') or 'macOS'
         ver  = run('sw_vers', '-productVersion')
         return f'{name} {ver}'.strip()
-    if _SYS == 'Windows':
-        return f'Windows {platform.release()} (build {platform.version()})'
     return f'{_SYS} {platform.release()}'
 
 def get_kernel():
-    return platform.version() if _SYS == 'Windows' else platform.release()
+    return platform.release()
 
 def get_uptime():
     if _SYS == 'Linux':
@@ -63,13 +57,7 @@ def get_uptime():
         m = re.search(r'sec\s*=\s*(\d+)', raw)
         if m:
             return fmt_secs(time.time() - int(m.group(1)))
-    if _SYS == 'Windows':
-        raw = run('wmic', 'os', 'get', 'LastBootUpTime', '/value')
-        m = re.search(r'=(\d{14})', raw)
-        if m:
-            boot = datetime.strptime(m.group(1), '%Y%m%d%H%M%S')
-            return fmt_secs((datetime.now() - boot).total_seconds())
-    if _SYS == 'Darwin':
+        # fall back to parsing `uptime` if boottime is unavailable
         return run('uptime').split(',')[0].split('up')[-1].strip() or 'Unknown'
     return run('uptime', '-p').replace('up ', '') or 'Unknown'
 
@@ -87,8 +75,6 @@ def get_packages():
     match _SYS:
         case 'Darwin':
             entries += _PKG_TABLE['Darwin']
-        case 'Windows':
-            entries += _PKG_TABLE['Windows']
         case _:
             portage = glob.glob('/var/db/pkg/*/*')
             if portage:
@@ -107,11 +93,6 @@ def get_packages():
     return ', '.join(counts) or 'Unknown'
 
 def get_shell():
-    if _SYS == 'Windows':
-        psver = run('powershell', '-NoProfile', '-Command', '$PSVersionTable.PSVersion.ToString()')
-        if psver:
-            return f'powershell {psver}'
-        return os.path.basename(os.environ.get('COMSPEC', 'cmd'))
     sh = os.environ.get('SHELL', '')
     if not sh:
         return 'Unknown'
@@ -120,12 +101,6 @@ def get_shell():
     return f'{name} {m.group()}' if m else name
 
 def get_terminal():
-    if _SYS == 'Windows':
-        if os.environ.get('WT_SESSION'):
-            return 'Windows Terminal'
-        if os.environ.get('ConEmuBuild'):
-            return 'ConEmu'
-        return 'cmd'
     return next(
         (os.environ[v] for v in ('TERM_PROGRAM', 'COLORTERM', 'TERM') if os.environ.get(v)),
         'Unknown',
@@ -167,19 +142,6 @@ def get_cpu():
         hz = run('sysctl', '-n', 'hw.cpufrequency')
         if hz.isdigit():
             freq_str = f' @ {int(hz)/1e9:.1f}GHz'
-    elif _SYS == 'Windows':
-        try:
-            raw = run('wmic', 'cpu', 'get', 'Name,NumberOfCores,NumberOfLogicalProcessors,CurrentClockSpeed', '/value')
-            vals = {k.strip(): v.strip() for k, v in (l.split('=', 1) for l in raw.splitlines() if '=' in l)}
-            name = vals.get('Name') or None
-            if vals.get('NumberOfCores'):
-                cores   = int(vals['NumberOfCores'])
-            if vals.get('NumberOfLogicalProcessors'):
-                threads = int(vals['NumberOfLogicalProcessors'])
-            if vals.get('CurrentClockSpeed'):
-                freq_str = f' @ {int(vals["CurrentClockSpeed"])/1000:.1f}GHz'
-        except (ValueError, KeyError):
-            pass
 
     name = name or platform.processor() or 'Unknown'
     name = re.sub(r'\(R\)|\(TM\)', '', name)
@@ -196,12 +158,6 @@ def get_gpu():
         for line in run('system_profiler', 'SPDisplaysDataType').splitlines():
             if 'Chipset Model' in line or 'Chip Model' in line:
                 return line.split(':', 1)[1].strip()
-    elif _SYS == 'Windows':
-        for line in run('wmic', 'path', 'win32_VideoController', 'get', 'name', '/value').splitlines():
-            if line.startswith('Name='):
-                val = line.split('=', 1)[1].strip()
-                if val:
-                    return val
     else:
         for line in run('lspci').splitlines():
             if any(k in line for k in ('VGA', '3D controller', 'Display controller')):
@@ -241,25 +197,12 @@ def get_ram():
             return f'{used/2**30:.1f}G / {total/2**30:.1f}G  {bar(used/total*100)}'
         except (OSError, AttributeError, ValueError, ZeroDivisionError):
             pass
-    if _SYS == 'Windows':
-        try:
-            vals = {}
-            for line in run('wmic', 'OS', 'get', 'FreePhysicalMemory,TotalVisibleMemorySize', '/value').splitlines():
-                if '=' in line:
-                    k, v = line.split('=', 1)
-                    vals[k.strip()] = int(v.strip())
-            total_kb = vals['TotalVisibleMemorySize']
-            used_kb  = total_kb - vals['FreePhysicalMemory']
-            return f'{used_kb/2**20:.1f}G / {total_kb/2**20:.1f}G  {bar(used_kb/total_kb*100)}'
-        except (KeyError, ValueError, ZeroDivisionError):
-            pass
     return 'Unknown'
 
 def get_disk():
     import shutil as _shutil
-    root = 'C:\\' if _SYS == 'Windows' else '/'
     try:
-        d = _shutil.disk_usage(root)
+        d = _shutil.disk_usage('/')
         return f'{d.used/2**30:.1f}G / {d.total/2**30:.1f}G  {bar(d.used/d.total*100)}'
     except (OSError, ZeroDivisionError):
         return 'Unknown'
