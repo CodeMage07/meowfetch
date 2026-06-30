@@ -155,9 +155,17 @@ def get_gpu():
         if out:
             return out.splitlines()[0].strip()
     if _SYS == 'Darwin':
+        model = cores = None
         for line in run('system_profiler', 'SPDisplaysDataType').splitlines():
-            if 'Chipset Model' in line or 'Chip Model' in line:
-                return line.split(':', 1)[1].strip()
+            s = line.strip()
+            if model is None and (s.startswith('Chipset Model:') or s.startswith('Chip Model:')):
+                model = s.split(':', 1)[1].strip()
+            elif model and cores is None and s.startswith('Total Number of Cores:'):
+                cores = s.split(':', 1)[1].strip()
+        if model:
+            # On Apple Silicon the GPU is the SoC, so the name duplicates the
+            # CPU; the core count is the only distinguishing detail worth showing.
+            return f'{model} ({cores}-core GPU)' if cores else model
     else:
         for line in run('lspci').splitlines():
             if any(k in line for k in ('VGA', '3D controller', 'Display controller')):
