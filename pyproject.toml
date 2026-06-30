@@ -1,6 +1,6 @@
 [build-system]
 requires = ["setuptools>=61"]
-build-backend = "setuptools.backends.legacy:build"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "meowfetch"
@@ -10,3 +10,9 @@ requires-python = ">=3.10"
 
 [project.scripts]
 meowfetch = "meowfetch.__main__:cli"
+
+[tool.setuptools]
+packages = ["meowfetch"]
+
+[tool.setuptools.package-data]
+meowfetch = ["data/*.json"]
