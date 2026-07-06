@@ -72,19 +72,18 @@ def get_packages():
         return f'{len(filtered)} ({label})' if filtered else None
 
     entries = []
-    match _SYS:
-        case 'Darwin':
-            entries += _PKG_TABLE['Darwin']
-        case _:
-            portage = glob.glob('/var/db/pkg/*/*')
-            if portage:
-                counts.append(f'{len(portage)} (portage)')
-            kiss_db = '/var/db/kiss/installed'
-            if os.path.isdir(kiss_db):
-                kiss_pkgs = [e for e in os.listdir(kiss_db) if os.path.isdir(f'{kiss_db}/{e}')]
-                if kiss_pkgs:
-                    counts.append(f'{len(kiss_pkgs)} (kiss)')
-            entries += _PKG_TABLE['Linux']
+    if _SYS == 'Darwin':
+        entries += _PKG_TABLE['Darwin']
+    else:
+        portage = glob.glob('/var/db/pkg/*/*')
+        if portage:
+            counts.append(f'{len(portage)} (portage)')
+        kiss_db = '/var/db/kiss/installed'
+        if os.path.isdir(kiss_db):
+            kiss_pkgs = [e for e in os.listdir(kiss_db) if os.path.isdir(f'{kiss_db}/{e}')]
+            if kiss_pkgs:
+                counts.append(f'{len(kiss_pkgs)} (kiss)')
+        entries += _PKG_TABLE['Linux']
     entries += _PKG_TABLE['_any']
 
     with ThreadPoolExecutor() as pool:
@@ -101,10 +100,12 @@ def get_shell():
     return f'{name} {m.group()}' if m else name
 
 def get_terminal():
-    return next(
-        (os.environ[v] for v in ('TERM_PROGRAM', 'COLORTERM', 'TERM') if os.environ.get(v)),
-        'Unknown',
-    )
+    for var in ('TERM_PROGRAM', 'COLORTERM', 'TERM'):
+        val = os.environ.get(var)
+        # COLORTERM usually just advertises colour depth, not a terminal name
+        if val and val.lower() not in ('truecolor', '24bit'):
+            return val
+    return 'Unknown'
 
 def get_cpu():
     name = None

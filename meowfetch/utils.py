@@ -29,7 +29,7 @@ def cmd_lines(*args):
     return out.splitlines() if out else []
 
 def bar(pct, width=10):
-    filled = round(width * pct / 100)
+    filled = min(width, max(0, round(width * pct / 100)))
     return f'[{"█" * filled}{"░" * (width - filled)}]'
 
 def fmt_secs(secs):
@@ -38,7 +38,8 @@ def fmt_secs(secs):
     parts = []
     if td.days: parts.append(f'{td.days}d')
     if h:       parts.append(f'{h}h')
-    parts.append(f'{rem // 60}m')
+    if rem // 60 or not parts:
+        parts.append(f'{rem // 60}m')
     return ' '.join(parts)
 
 def color_strip():
@@ -51,7 +52,8 @@ _CACHE_FILE = os.path.expanduser('~/.cache/meowfetch/cache.json')
 def load_cache():
     try:
         with open(_CACHE_FILE) as f:
-            return json.load(f)
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
     except (OSError, json.JSONDecodeError, ValueError):
         return {}
 

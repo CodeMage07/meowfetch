@@ -4,16 +4,17 @@ set -e
 DEST="$HOME/.local/share/meowfetch"
 BIN="$HOME/.local/bin"
 
-# Require Python 3.10+ for match/case support
+# Require Python 3.9+
 PYTHON=""
-for candidate in python3.14 python3.13 python3.12 python3.11 python3.10; do
-  if command -v "$candidate" >/dev/null 2>&1; then
+for candidate in python3.14 python3.13 python3.12 python3.11 python3.10 python3; do
+  if command -v "$candidate" >/dev/null 2>&1 \
+      && "$candidate" -c 'import sys; raise SystemExit(sys.version_info < (3, 9))' 2>/dev/null; then
     PYTHON="$candidate"
     break
   fi
 done
 if [ -z "$PYTHON" ]; then
-  echo "error: Python 3.10 or newer is required but was not found" >&2
+  echo "error: Python 3.9 or newer is required but was not found" >&2
   exit 1
 fi
 

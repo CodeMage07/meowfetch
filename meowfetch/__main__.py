@@ -4,6 +4,7 @@
 import argparse, random, time
 from concurrent.futures import ThreadPoolExecutor
 
+from . import __version__
 from .utils import BOLD, RST, _COLOURS, color_strip, install, load_cache, save_cache, _load_json
 from .collectors import (
     get_user, get_hostname,
@@ -52,6 +53,10 @@ def main(color='cyan'):
 
     now   = time.time()
     cache = load_cache()
+    # A code update can change what collectors emit — don't serve values
+    # cached by an older version.
+    if cache.get('_version') != __version__:
+        cache = {'_version': __version__}
 
     results  = {}
     to_fetch = {}
@@ -112,6 +117,7 @@ def cli():
         help=f'colour scheme ({", ".join(_COLOURS)})',
     )
     parser.add_argument('--install', action='store_true', help='install launcher to ~/.local/bin')
+    parser.add_argument('--version', action='version', version=f'%(prog)s {__version__}')
     args = parser.parse_args()
 
     if args.install:

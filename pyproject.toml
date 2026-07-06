@@ -4,9 +4,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "meowfetch"
-version = "1.0.0"
+version = "1.1.0"
 description = "A fetch script with a pawesome twist"
-requires-python = ">=3.10"
+requires-python = ">=3.9"
 
 [project.scripts]
 meowfetch = "meowfetch.__main__:cli"
