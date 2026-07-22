@@ -64,4 +64,4 @@ re-run the install command and it will pull the latest changes automatically.
 
 ---
 # AI notice
-This project utilises AI generated code.
+This project contains AI generated code.
