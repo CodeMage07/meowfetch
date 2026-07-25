@@ -156,6 +156,16 @@ def get_gpu():
         if out:
             return out.splitlines()[0].strip()
     if _SYS == 'Darwin':
+        # On Apple Silicon the GPU is the SoC, so the name duplicates the CPU;
+        # the core count is the only distinguishing detail worth showing. Derive
+        # both from fast sysctl/ioreg queries — `system_profiler` takes ~130ms.
+        if platform.machine() == 'arm64':
+            model = run('sysctl', '-n', 'machdep.cpu.brand_string')
+            if model:
+                m = re.search(r'"gpu-core-count"\s*=\s*(\d+)',
+                              run('ioreg', '-r', '-d1', '-k', 'gpu-core-count'))
+                return f'{model} ({m.group(1)}-core GPU)' if m else model
+        # Intel Macs (integrated/discrete GPUs) and the fast-path fallback.
         model = cores = None
         for line in run('system_profiler', 'SPDisplaysDataType').splitlines():
             s = line.strip()
@@ -164,8 +174,6 @@ def get_gpu():
             elif model and cores is None and s.startswith('Total Number of Cores:'):
                 cores = s.split(':', 1)[1].strip()
         if model:
-            # On Apple Silicon the GPU is the SoC, so the name duplicates the
-            # CPU; the core count is the only distinguishing detail worth showing.
             return f'{model} ({cores}-core GPU)' if cores else model
     else:
         for line in run('lspci').splitlines():
