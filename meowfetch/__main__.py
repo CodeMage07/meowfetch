@@ -3,6 +3,7 @@
 
 import argparse, random, time
 from concurrent.futures import ThreadPoolExecutor
+from datetime import date
 
 from . import __version__
 from .utils import BOLD, RST, _COLOURS, color_strip, install, load_cache, save_cache, _load_json
@@ -15,9 +16,23 @@ from .collectors import (
     get_ram, get_disk,
 )
 
-CATS = _load_json('cats.json')
+CATS    = _load_json('cats.json')
+FESTIVE = _load_json('festive_cats.json')
 
 _DISK_LABEL = 'Disk (/)'
+
+
+def festive_cat(today=None):
+    """The festive entry for today, or None on an ordinary day.
+
+    Reads the machine's local date, so the cat lands on the holiday in the
+    user's own timezone rather than on some fixed one.
+    """
+    today = today or date.today()
+    for entry in FESTIVE.values():
+        if [today.month, today.day] in entry['dates']:
+            return entry
+    return None
 
 
 _CACHE_TTL = {
@@ -32,10 +47,16 @@ _CACHE_TTL = {
 }
 
 
-def main(color='cyan'):
-    user   = get_user()
-    host   = get_hostname()
-    cat    = random.choice(CATS)
+def main(color=None):
+    user    = get_user()
+    host    = get_hostname()
+    festive = festive_cat()
+
+    cat = festive['art'] if festive else random.choice(CATS)
+    # An explicit --color always wins; otherwise a holiday themes the whole
+    # panel, and any other day falls back to the usual cyan.
+    if color is None:
+        color = festive['colour'] if festive else 'cyan'
     accent = _COLOURS[color]
 
     collectors = {
@@ -112,9 +133,9 @@ def cli():
     parser.add_argument(
         '--color', '-c',
         choices=_COLOURS,
-        default='cyan',
+        default=None,
         metavar='NAME',
-        help=f'colour scheme ({", ".join(_COLOURS)})',
+        help=f'colour scheme, default cyan ({", ".join(_COLOURS)})',
     )
     parser.add_argument('--install', action='store_true', help='install launcher to ~/.local/bin')
     parser.add_argument('--version', action='version', version=f'%(prog)s {__version__}')
