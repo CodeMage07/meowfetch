@@ -4,7 +4,7 @@ Hi, this is just a small project I've made whilst experiementing with agentic co
 
 Meowfetch is a fetch utility with a pawesome twist! When ran it will display one of several cats, along side system information.
 
-![preview](Screenshot_20260507_153129.png)
+![preview](meowfetch.png)
 
 ---
 what it shows
