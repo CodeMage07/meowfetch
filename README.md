@@ -7,15 +7,6 @@ Meowfetch is a fetch utility with a pawesome twist! When ran it will display one
 ![preview](meowfetch.png)
 
 ---
-what it shows
-
-- OS, kernel, uptime
-- CPU (model, clock speed, core/thread count)
-- GPU
-- RAM and disk usage, with a progress bar
-- shell, terminal, installed packages
-
----
 installation
 
 ## Linux / macOS
