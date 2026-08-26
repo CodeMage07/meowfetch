@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Meowfetch — a fetch script with a pawesome twist"""
 
-import argparse, random, time
+import argparse, os, random, time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 
@@ -19,7 +19,7 @@ from .collectors import (
 CATS    = _load_json('cats.json')
 FESTIVE = _load_json('festive_cats.json')
 
-_DISK_LABEL = 'Disk (/)'
+_DISK_LABEL = 'Disk (C:\\)' if os.name == 'nt' else 'Disk (/)'
 
 
 def festive_cat(today=None):

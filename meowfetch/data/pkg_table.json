@@ -15,6 +15,12 @@
     ["pkg",      "pkg",        ["pkg", "query", "%n"],                               null],
     ["brew",     "brew",       ["brew", "list"],                                     null]
   ],
+  "Windows": [
+    ["winget", "winget", ["winget", "list", "--disable-interactivity"], "skip_header"],
+    ["choco",  "choco",  ["choco", "list", "--no-progress"],           null],
+    ["scoop",  "scoop",  ["scoop", "list"],                            null],
+    ["pip",    "pip",    ["pip", "list", "--format=columns"],          "skip_header"]
+  ],
   "_any": [
     ["nix",     "nix-env",  ["nix-env", "-q"],                                    null],
     ["snap",    "snap",     ["snap", "list"],                                      "skip_header"],

@@ -40,9 +40,17 @@ def get_os():
         name = run('sw_vers', '-productName') or 'macOS'
         ver  = run('sw_vers', '-productVersion')
         return f'{name} {ver}'.strip()
+    if _SYS == 'Windows':
+        ver = run('powershell', '-Command',
+                  '(Get-CimInstance Win32_OperatingSystem).Caption')
+        if ver:
+            return ver
+        return f'Windows {platform.release()}'
     return f'{_SYS} {platform.release()}'
 
 def get_kernel():
+    if _SYS == 'Windows':
+        return platform.version()
     return platform.release()
 
 def get_uptime():
@@ -57,8 +65,20 @@ def get_uptime():
         m = re.search(r'sec\s*=\s*(\d+)', raw)
         if m:
             return fmt_secs(time.time() - int(m.group(1)))
-        # fall back to parsing `uptime` if boottime is unavailable
         return run('uptime').split(',')[0].split('up')[-1].strip() or 'Unknown'
+    if _SYS == 'Windows':
+        try:
+            import ctypes
+            ticks = ctypes.windll.kernel32.GetTickCount64()  # milliseconds
+            return fmt_secs(ticks / 1000)
+        except (AttributeError, OSError):
+            pass
+        out = run('wmic', 'os', 'get', 'lastbootuptime')
+        m = re.search(r'(\d{14})', out)
+        if m:
+            boot = time.mktime(time.strptime(m.group(1), '%Y%m%d%H%M%S'))
+            return fmt_secs(time.time() - boot)
+        return 'Unknown'
     return run('uptime', '-p').replace('up ', '') or 'Unknown'
 
 def get_packages():
@@ -74,6 +94,8 @@ def get_packages():
     entries = []
     if _SYS == 'Darwin':
         entries += _PKG_TABLE['Darwin']
+    elif _SYS == 'Windows':
+        entries += _PKG_TABLE.get('Windows', [])
     else:
         portage = glob.glob('/var/db/pkg/*/*')
         if portage:
@@ -92,6 +114,12 @@ def get_packages():
     return ', '.join(counts) or 'Unknown'
 
 def get_shell():
+    if _SYS == 'Windows':
+        ps = os.environ.get('PSModulePath')
+        if ps:
+            ver = run('pwsh', '--version')
+            return ver if ver else 'pwsh'
+        return os.path.basename(os.environ.get('COMSPEC', 'cmd.exe'))
     sh = os.environ.get('SHELL', '')
     if not sh:
         return 'Unknown'
@@ -100,9 +128,16 @@ def get_shell():
     return f'{name} {m.group()}' if m else name
 
 def get_terminal():
+    if _SYS == 'Windows':
+        if os.environ.get('WT_SESSION'):
+            return 'Windows Terminal'
+        if os.environ.get('TERM_PROGRAM') == 'vscode':
+            return 'VS Code'
+        if os.environ.get('ConEmuPID'):
+            return 'ConEmu'
+        return 'cmd.exe'
     for var in ('TERM_PROGRAM', 'COLORTERM', 'TERM'):
         val = os.environ.get(var)
-        # COLORTERM usually just advertises colour depth, not a terminal name
         if val and val.lower() not in ('truecolor', '24bit'):
             return val
     return 'Unknown'
@@ -143,6 +178,17 @@ def get_cpu():
         hz = run('sysctl', '-n', 'hw.cpufrequency')
         if hz.isdigit():
             freq_str = f' @ {int(hz)/1e9:.1f}GHz'
+    elif _SYS == 'Windows':
+        name = run('powershell', '-Command',
+                   '(Get-CimInstance Win32_Processor).Name')
+        try:
+            cores   = int(run('wmic', 'cpu', 'get', 'NumberOfCores'))
+            threads = int(run('wmic', 'cpu', 'get', 'NumberOfLogicalProcessors'))
+        except (ValueError, TypeError):
+            pass
+        hz = run('wmic', 'cpu', 'get', 'MaxClockSpeed')
+        if hz.isdigit():
+            freq_str = f' @ {int(hz)/1000:.1f}GHz'
 
     name = name or platform.processor() or 'Unknown'
     name = re.sub(r'\(R\)|\(TM\)', '', name)
@@ -156,16 +202,12 @@ def get_gpu():
         if out:
             return out.splitlines()[0].strip()
     if _SYS == 'Darwin':
-        # On Apple Silicon the GPU is the SoC, so the name duplicates the CPU;
-        # the core count is the only distinguishing detail worth showing. Derive
-        # both from fast sysctl/ioreg queries — `system_profiler` takes ~130ms.
         if platform.machine() == 'arm64':
             model = run('sysctl', '-n', 'machdep.cpu.brand_string')
             if model:
                 m = re.search(r'"gpu-core-count"\s*=\s*(\d+)',
                               run('ioreg', '-r', '-d1', '-k', 'gpu-core-count'))
                 return f'{model} ({m.group(1)}-core GPU)' if m else model
-        # Intel Macs (integrated/discrete GPUs) and the fast-path fallback.
         model = cores = None
         for line in run('system_profiler', 'SPDisplaysDataType').splitlines():
             s = line.strip()
@@ -175,6 +217,11 @@ def get_gpu():
                 cores = s.split(':', 1)[1].strip()
         if model:
             return f'{model} ({cores}-core GPU)' if cores else model
+    elif _SYS == 'Windows':
+        out = run('wmic', 'path', 'win32_videocontroller', 'get', 'name')
+        lines = [l.strip() for l in out.splitlines() if l.strip() and l.strip() != 'Name']
+        if lines:
+            return lines[0]
     else:
         for line in run('lspci').splitlines():
             if any(k in line for k in ('VGA', '3D controller', 'Display controller')):
@@ -214,12 +261,37 @@ def get_ram():
             return f'{used/2**30:.1f}G / {total/2**30:.1f}G  {bar(used/total*100)}'
         except (OSError, AttributeError, ValueError, ZeroDivisionError):
             pass
+    if _SYS == 'Windows':
+        try:
+            import ctypes
+            class MEMORYSTATUSEX(ctypes.Structure):
+                _fields_ = [
+                    ('dwLength', ctypes.c_ulong),
+                    ('dwMemoryLoad', ctypes.c_ulong),
+                    ('ullTotalPhys', ctypes.c_ulonglong),
+                    ('ullAvailPhys', ctypes.c_ulonglong),
+                    ('ullTotalPageFile', ctypes.c_ulonglong),
+                    ('ullAvailPageFile', ctypes.c_ulonglong),
+                    ('ullTotalVirtual', ctypes.c_ulonglong),
+                    ('ullAvailVirtual', ctypes.c_ulonglong),
+                    ('ullAvailExtendedVirtual', ctypes.c_ulonglong),
+                ]
+            mem = MEMORYSTATUSEX()
+            mem.dwLength = ctypes.sizeof(mem)
+            ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(mem))
+            total = mem.ullTotalPhys
+            avail = mem.ullAvailPhys
+            used  = total - avail
+            return f'{used/2**30:.1f}G / {total/2**30:.1f}G  {bar(used/total*100)}'
+        except (AttributeError, OSError):
+            pass
     return 'Unknown'
 
 def get_disk():
     import shutil as _shutil
+    root = 'C:\\' if _SYS == 'Windows' else '/'
     try:
-        d = _shutil.disk_usage('/')
+        d = _shutil.disk_usage(root)
         return f'{d.used/2**30:.1f}G / {d.total/2**30:.1f}G  {bar(d.used/d.total*100)}'
     except (OSError, ZeroDivisionError):
         return 'Unknown'

@@ -4,6 +4,19 @@ from datetime import timedelta
 _SYS      = platform.system()
 _DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
 
+# enable ANSI escape support on Windows 10+
+if _SYS == 'Windows':
+    try:
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        for handle_id in (-11, -12):  # stdout, stderr
+            handle = kernel32.GetStdHandle(handle_id)
+            mode   = ctypes.c_ulong()
+            kernel32.GetConsoleMode(handle, ctypes.byref(mode))
+            kernel32.SetConsoleMode(handle, mode.value | 0x0004)  # ENABLE_VIRTUAL_TERMINAL_PROCESSING
+    except OSError:
+        pass
+
 RST  = '\033[0m'
 BOLD = '\033[1m'
 
@@ -47,7 +60,13 @@ def color_strip():
     bright = ''.join(f'\033[10{i}m   ' for i in range(8)) + RST
     return [normal, bright]
 
-_CACHE_FILE = os.path.expanduser('~/.cache/meowfetch/cache.json')
+
+# cache path: ~/.cache on Unix, %LOCALAPPDATA% on Windows
+if _SYS == 'Windows':
+    _CACHE_DIR = os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')), 'meowfetch')
+else:
+    _CACHE_DIR = os.path.join(os.path.expanduser('~'), '.cache', 'meowfetch')
+_CACHE_FILE = os.path.join(_CACHE_DIR, 'cache.json')
 
 def load_cache():
     try:
@@ -69,24 +88,39 @@ def save_cache(data):
 def install():
     import sys
     project_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-    local_bin   = os.path.expanduser('~/.local/bin')
-    os.makedirs(local_bin, exist_ok=True)
-
-    dest = os.path.join(local_bin, 'meowfetch')
     python_code = (
         f'import sys; sys.path.insert(0, {repr(project_dir)}); '
         f'from meowfetch.__main__ import cli; cli()'
     )
-    with open(dest, 'w') as f:
-        f.write(
-            f'#!/bin/sh\n'
-            f'exec {shlex.quote(sys.executable)} -c '
-            f'{shlex.quote(python_code)} "$@"\n'
-        )
-    os.chmod(dest, os.stat(dest).st_mode | 0o111)
 
-    print(f'installed → {dest}')
-    if local_bin not in os.environ.get('PATH', '').split(':'):
-        shell = os.environ.get('SHELL', '')
-        rc = '~/.zshrc' if 'zsh' in shell else '~/.bashrc'
-        print(f'\nadd to PATH:\n  echo \'export PATH="$HOME/.local/bin:$PATH"\' >> {rc}')
+    if _SYS == 'Windows':
+        install_dir = os.path.join(
+            os.environ.get('LOCALAPPDATA', os.path.expanduser('~')),
+            'Programs', 'meowfetch')
+        os.makedirs(install_dir, exist_ok=True)
+        dest = os.path.join(install_dir, 'meowfetch.cmd')
+        with open(dest, 'w') as f:
+            f.write(
+                f'@echo off\r\n'
+                f'"{sys.executable}" -c "{python_code}" %*\r\n'
+            )
+        print(f'installed -> {dest}')
+        path_dirs = os.environ.get('PATH', '').split(';')
+        if install_dir.lower() not in [p.lower() for p in path_dirs]:
+            print(f'\nadd to PATH:\n  setx PATH "%PATH%;{install_dir}"')
+    else:
+        local_bin = os.path.expanduser('~/.local/bin')
+        os.makedirs(local_bin, exist_ok=True)
+        dest = os.path.join(local_bin, 'meowfetch')
+        with open(dest, 'w') as f:
+            f.write(
+                '#!/bin/sh\n'
+                f'exec {shlex.quote(sys.executable)} -c '
+                f'{shlex.quote(python_code)} "$@"\n'
+            )
+        os.chmod(dest, os.stat(dest).st_mode | 0o111)
+        print(f'installed -> {dest}')
+        if local_bin not in os.environ.get('PATH', '').split(':'):
+            shell = os.environ.get('SHELL', '')
+            rc = '~/.zshrc' if 'zsh' in shell else '~/.bashrc'
+            print(f'\nadd to PATH:\n  echo \'export PATH="$HOME/.local/bin:$PATH"\' >> {rc}')
