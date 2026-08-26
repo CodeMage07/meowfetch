@@ -1,4 +1,4 @@
-import json, os, platform, shutil, subprocess
+import json, os, platform, shlex, shutil, subprocess
 from datetime import timedelta
 
 _SYS      = platform.system()
@@ -18,7 +18,7 @@ def run(*cmd):
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=3)
         return result.stdout.strip()
-    except Exception:
+    except (subprocess.SubprocessError, OSError):
         return ''
 
 def has(cmd):
@@ -73,12 +73,15 @@ def install():
     os.makedirs(local_bin, exist_ok=True)
 
     dest = os.path.join(local_bin, 'meowfetch')
+    python_code = (
+        f'import sys; sys.path.insert(0, {repr(project_dir)}); '
+        f'from meowfetch.__main__ import cli; cli()'
+    )
     with open(dest, 'w') as f:
         f.write(
             f'#!/bin/sh\n'
-            f'exec {sys.executable} -c "'
-            f'import sys; sys.path.insert(0, \'{project_dir}\'); '
-            f'from meowfetch.__main__ import cli; cli()" "$@"\n'
+            f'exec {shlex.quote(sys.executable)} -c '
+            f'{shlex.quote(python_code)} "$@"\n'
         )
     os.chmod(dest, os.stat(dest).st_mode | 0o111)
 
