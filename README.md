@@ -12,7 +12,7 @@ installation
 ## Linux / macOS
 
 ```bash
-sh <(curl -fsSL https://raw.githubusercontent.com/praisetux/meowfetch/main/install.sh)
+curl -fsSL https://raw.githubusercontent.com/praisetux/meowfetch/main/install.sh | sh
 ```
 
 if `~/.local/bin` isn't in your PATH yet:
@@ -44,7 +44,7 @@ meowfetch --color pink
 meowfetch -c bright_cyan
 ```
 
-available: `red`, `green`, `yellow`, `blue`, `magenta`, `cyan`, `white`, `pink`, `bright_red`, `bright_green`, `bright_blue`, `bright_cyan`
+available: `red`, `green`, `yellow`, `orange`, `blue`, `magenta`, `cyan`, `white`, `pink`, `bright_red`, `bright_green`, `bright_blue`, `bright_cyan`
 
 default is `cyan`.
 

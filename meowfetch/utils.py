@@ -1,4 +1,4 @@
-import json, os, platform, shlex, shutil, subprocess
+import json, os, platform, shlex, shutil, subprocess, tempfile
 from datetime import timedelta
 
 _SYS      = platform.system()
@@ -78,26 +78,51 @@ def load_cache():
 
 def save_cache(data):
     os.makedirs(os.path.dirname(_CACHE_FILE), exist_ok=True)
+    temporary = None
     try:
-        with open(_CACHE_FILE, 'w') as f:
+        with tempfile.NamedTemporaryFile(
+                mode='w', dir=_CACHE_DIR, prefix='cache.', suffix='.tmp',
+                delete=False) as f:
+            temporary = f.name
             json.dump(data, f)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(temporary, _CACHE_FILE)
     except OSError:
-        pass
+        if temporary:
+            try:
+                os.unlink(temporary)
+            except OSError:
+                pass
 
 
 def install():
     import sys
     project_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-    python_code = (
-        f'import sys; sys.path.insert(0, {repr(project_dir)}); '
-        f'from meowfetch.__main__ import cli; cli()'
-    )
+    source_package = os.path.join(project_dir, 'meowfetch')
 
     if _SYS == 'Windows':
         install_dir = os.path.join(
             os.environ.get('LOCALAPPDATA', os.path.expanduser('~')),
             'Programs', 'meowfetch')
-        os.makedirs(install_dir, exist_ok=True)
+        library_dir = os.path.join(install_dir, 'lib')
+    else:
+        install_dir = os.path.expanduser('~/.local/share/meowfetch')
+        library_dir = install_dir
+
+    os.makedirs(library_dir, exist_ok=True)
+    installed_package = os.path.join(library_dir, 'meowfetch')
+    if os.path.realpath(source_package) != os.path.realpath(installed_package):
+        shutil.copytree(
+            source_package, installed_package, dirs_exist_ok=True,
+            ignore=shutil.ignore_patterns('__pycache__', '*.pyc'),
+        )
+    python_code = (
+        f'import sys; sys.path.insert(0, {repr(library_dir)}); '
+        f'from meowfetch.__main__ import cli; cli()'
+    )
+
+    if _SYS == 'Windows':
         dest = os.path.join(install_dir, 'meowfetch.cmd')
         with open(dest, 'w') as f:
             f.write(

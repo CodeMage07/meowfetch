@@ -4,9 +4,16 @@ from .utils import run, has, cmd_lines, bar, fmt_secs, _SYS, _load_json
 
 _VENDOR_TAG = re.compile(r'^(AMD|ATI|NVIDIA|Intel)[/\s]', re.I)
 
+def _skip_table_header(line):
+    value = line.strip().lower()
+    is_heading = any(value == word or value.startswith(f'{word} ')
+                     for word in ('name', 'package'))
+    return bool(value) and not is_heading and re.fullmatch(r'-+', value) is None
+
+
 _FILTERS = {
     'indent':      lambda l: l.startswith('  '),
-    'skip_header': lambda l: not l.lower().startswith('name'),
+    'skip_header': _skip_table_header,
 }
 
 def _load_pkg_table():
@@ -181,14 +188,15 @@ def get_cpu():
     elif _SYS == 'Windows':
         name = run('powershell', '-Command',
                    '(Get-CimInstance Win32_Processor).Name')
-        try:
-            cores   = int(run('wmic', 'cpu', 'get', 'NumberOfCores'))
-            threads = int(run('wmic', 'cpu', 'get', 'NumberOfLogicalProcessors'))
-        except (ValueError, TypeError):
-            pass
-        hz = run('wmic', 'cpu', 'get', 'MaxClockSpeed')
-        if hz.isdigit():
-            freq_str = f' @ {int(hz)/1000:.1f}GHz'
+        def first_number(value):
+            return next((int(line.strip()) for line in value.splitlines()
+                         if line.strip().isdigit()), None)
+
+        cores = first_number(run('wmic', 'cpu', 'get', 'NumberOfCores'))
+        threads = first_number(run('wmic', 'cpu', 'get', 'NumberOfLogicalProcessors'))
+        mhz = first_number(run('wmic', 'cpu', 'get', 'MaxClockSpeed'))
+        if mhz:
+            freq_str = f' @ {mhz/1000:.1f}GHz'
 
     name = name or platform.processor() or 'Unknown'
     name = re.sub(r'\(R\)|\(TM\)', '', name)

@@ -19,9 +19,12 @@ if [ -z "$PYTHON" ]; then
 fi
 
 if [ -d "$DEST/.git" ]; then
+  if [ -n "$(git -C "$DEST" status --porcelain)" ]; then
+    echo "error: $DEST contains local changes; update stopped to preserve them" >&2
+    exit 1
+  fi
   git -C "$DEST" remote set-url origin https://github.com/praisetux/meowfetch
-  git -C "$DEST" fetch -q origin
-  git -C "$DEST" reset -q --hard origin/main
+  git -C "$DEST" pull -q --ff-only origin main
 else
   git clone -q https://github.com/praisetux/meowfetch "$DEST"
 fi

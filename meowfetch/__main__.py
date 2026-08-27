@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Meowfetch — a fetch script with a pawesome twist"""
 
-import argparse, os, random, time
+import argparse, os, random, sys, time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 
@@ -57,7 +57,10 @@ def main(color=None):
     # panel, and any other day falls back to the usual cyan.
     if color is None:
         color = festive['colour'] if festive else 'cyan'
-    accent = _COLOURS[color]
+    use_colour = sys.stdout.isatty() and 'NO_COLOR' not in os.environ
+    accent = _COLOURS[color] if use_colour else ''
+    bold = BOLD if use_colour else ''
+    reset = RST if use_colour else ''
 
     collectors = {
         'OS':        get_os,
@@ -84,8 +87,11 @@ def main(color=None):
     for label, fn in collectors.items():
         ttl   = _CACHE_TTL.get(label, 0)
         entry = cache.get(label)
-        if ttl > 0 and isinstance(entry, dict) and 'ts' in entry and 'val' in entry \
-                and now - entry['ts'] < ttl:
+        timestamp = entry.get('ts') if isinstance(entry, dict) else None
+        age = now - timestamp if isinstance(timestamp, (int, float)) \
+            and not isinstance(timestamp, bool) else -1
+        if ttl > 0 and isinstance(entry, dict) and 'val' in entry \
+                and 0 <= age < ttl:
             results[label] = entry['val']
         else:
             to_fetch[label] = fn
@@ -93,7 +99,12 @@ def main(color=None):
     if to_fetch:
         with ThreadPoolExecutor() as pool:
             futures = {label: pool.submit(fn) for label, fn in to_fetch.items()}
-            fresh = {label: f.result() for label, f in futures.items()}
+            fresh = {}
+            for label, future in futures.items():
+                try:
+                    fresh[label] = future.result()
+                except Exception:
+                    fresh[label] = 'Unknown'
         results.update(fresh)
         dirty = False
         for label, val in fresh.items():
@@ -106,17 +117,17 @@ def main(color=None):
             save_cache(cache)
 
     rows = [
-        f'{BOLD}{accent}{user}{RST}@{BOLD}{accent}{host}{RST}',
-        f'{accent}{"─" * (len(user) + len(host) + 1)}{RST}',
+        f'{bold}{accent}{user}{reset}@{bold}{accent}{host}{reset}',
+        f'{accent}{"─" * (len(user) + len(host) + 1)}{reset}',
     ]
     for label in collectors:
         val = results.get(label)
         if val:
-            rows.append(f'{BOLD}{accent}{label}{RST}: {val}')
-    rows += [''] + color_strip()
+            rows.append(f'{bold}{accent}{label}{reset}: {val}')
+    rows += [''] + (color_strip() if use_colour else [])
 
     cat_w    = max(len(line) for line in cat)
-    cat_rows = [f'{BOLD}{accent}{line.ljust(cat_w)}{RST}' for line in cat]
+    cat_rows = [f'{bold}{accent}{line.ljust(cat_w)}{reset}' for line in cat]
 
     n = max(len(cat_rows), len(rows))
     cat_rows += [' ' * cat_w] * (n - len(cat_rows))
