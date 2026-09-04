@@ -7,6 +7,12 @@ Meowfetch is a fetch utility with a pawesome twist! When ran it will display one
 ![preview](meowfetch.png)
 
 ---
+requirements
+
+- Python 3.9 or newer
+- Git
+
+---
 installation
 
 ## Linux / macOS

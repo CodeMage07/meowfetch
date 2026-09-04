@@ -18,6 +18,13 @@ if [ -z "$PYTHON" ]; then
   exit 1
 fi
 
+# Require Git, which is used to clone and update the checkout below
+if ! command -v git >/dev/null 2>&1; then
+  echo "error: Git is required but was not found" >&2
+  echo "install Git with your package manager, then run this installer again" >&2
+  exit 1
+fi
+
 if [ -d "$DEST/.git" ]; then
   if [ -n "$(git -C "$DEST" status --porcelain)" ]; then
     echo "error: $DEST contains local changes; update stopped to preserve them" >&2
