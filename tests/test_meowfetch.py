@@ -4,6 +4,8 @@ import io
 import json
 import os
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import unittest
 from unittest import mock
@@ -125,6 +127,22 @@ class InstallTests(unittest.TestCase):
             self.assertTrue(installed.is_file())
             self.assertTrue(launcher.is_file())
             self.assertNotIn(str(source), launcher.read_text(encoding='utf-8'))
+
+    def test_installer_reports_a_missing_git_dependency(self):
+        script = Path(__file__).resolve().parent.parent / 'install.sh'
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            stub_bin = home / 'bin'
+            stub_bin.mkdir()
+            (stub_bin / 'python3').symlink_to(sys.executable)
+            result = subprocess.run(
+                ['/bin/sh', str(script)],
+                capture_output=True, text=True, timeout=60,
+                env={'HOME': str(home), 'PATH': str(stub_bin), 'SHELL': '/bin/sh'},
+            )
+            self.assertEqual(result.returncode, 1)
+            self.assertIn('Git is required', result.stderr)
+            self.assertFalse((home / '.local').exists())
 
 
 if __name__ == '__main__':
